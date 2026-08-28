@@ -17,6 +17,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ModeToggle } from "@/components/layout/mode-toggle";
+import { LocaleSwitcher } from "@/components/i18n/locale-switcher";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "dashboard",
@@ -132,6 +133,11 @@ export function Header({ onOpenSidebar }: HeaderProps) {
             <SettingsIcon className="size-4" />
             {t("menuSettings")}
           </DropdownMenuItem>
+
+          {/* [CUSTOM:i18n start] Language selector */}
+          <LocaleSwitcher />
+          {/* [CUSTOM:i18n end] */}
+
           <DropdownMenuSeparator className="bg-border" />
           <DropdownMenuItem
             onClick={signOut}
