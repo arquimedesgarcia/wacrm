@@ -275,9 +275,11 @@ export interface MessageReaction {
 export interface WhatsAppConfig {
   id: string;
   user_id: string;
-  phone_number_id: string;
+  /** Active provider. Added in migration 040. Defaults to 'meta'. */
+  provider?: 'meta' | 'evolution';
+  phone_number_id?: string;
   waba_id?: string;
-  access_token: string;
+  access_token?: string;
   verify_token?: string;
   status: 'connected' | 'disconnected';
   connected_at?: string;
@@ -298,6 +300,16 @@ export interface WhatsAppConfig {
    * inbound attachments expire. Migration 039.
    */
   mirror_inbound_media?: boolean;
+  /** Evolution API base URL (e.g. https://evolution.example.com). Migration 040. */
+  evolution_base_url?: string | null;
+  /** Encrypted Evolution API key. Migration 040. */
+  evolution_api_key?: string | null;
+  /** Evolution instance name used in routes. Migration 040. */
+  evolution_instance_name?: string | null;
+  /** Evolution instance id returned by /instance/create. Migration 040. */
+  evolution_instance_id?: string | null;
+  /** Encrypted secret Evolution sends in webhook headers. Migration 040. */
+  evolution_webhook_secret?: string | null;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

@@ -31,6 +31,7 @@ import {
   AccordionContent,
 } from '@/components/ui/accordion';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
+import { EvolutionConfigPanel } from './evolution-config-panel';
 
 const MASKED_TOKEN = '••••••••••••••••';
 
@@ -76,6 +77,12 @@ export function WhatsAppConfig() {
   const [verifyToken, setVerifyToken] = useState('');
   const [pin, setPin] = useState('');
   const [tokenEdited, setTokenEdited] = useState(false);
+
+
+  // Provider selection: 'meta' (default / legacy) or 'evolution'.
+  const [provider, setProvider] = useState<'meta' | 'evolution'>(
+    config?.provider === 'evolution' ? 'evolution' : 'meta'
+  );
 
   // Inbound-media mirror (issue #466). Unlike everything else on this
   // page it is NOT part of handleSave: that path insists on re-entering
@@ -138,6 +145,7 @@ export function WhatsAppConfig() {
         setVerifyToken('');
         setPin('');
         setTokenEdited(false);
+        setProvider(data.provider === 'evolution' ? 'evolution' : 'meta');
         // Undefined on a row read before migration 039 — treat that as
         // on, matching the webhook's own default.
         setMirrorMedia(data.mirror_inbound_media !== false);
@@ -149,6 +157,7 @@ export function WhatsAppConfig() {
         setVerifyToken('');
         setPin('');
         setTokenEdited(false);
+        setProvider('meta');
         setMirrorMedia(true);
       }
       // Clear any stale probe result when reloading the row.
@@ -399,6 +408,7 @@ export function WhatsAppConfig() {
       setAccessToken('');
       setVerifyToken('');
       setTokenEdited(false);
+      setProvider('meta');
       setConnectionStatus('disconnected');
       setResetReason(null);
       setStatusMessage('');
@@ -440,6 +450,58 @@ export function WhatsAppConfig() {
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
       {/* Main config form */}
       <div className="space-y-6">
+        {/* Provider selector */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-foreground">WhatsApp Provider</CardTitle>
+            <CardDescription className="text-muted-foreground">
+              Choose the WhatsApp connection method for this account.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex gap-2 p-1 rounded-lg border border-border bg-muted w-fit">
+              <button
+                type="button"
+                onClick={() => setProvider('meta')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  provider === 'meta'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Meta Cloud API
+              </button>
+              <button
+                type="button"
+                onClick={() => setProvider('evolution')}
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  provider === 'evolution'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                Evolution API
+              </button>
+            </div>
+            {provider === 'evolution' && (
+              <p className="mt-3 text-xs text-amber-600 dark:text-amber-500">
+                Evolution API uses WhatsApp Web / Baileys and is intended for testing.
+                It does not support templates or interactive messages.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {provider === 'evolution' ? (
+          <EvolutionConfigPanel
+            initialConfig={config?.provider === 'evolution' ? config : null}
+            onConfigChange={(next) => {
+              setConfig(next);
+              setConnectionStatus(next?.status === 'connected' ? 'connected' : 'disconnected');
+            }}
+          />
+        ) : (
+          <>
         {/* Corrupted-token reset banner */}
         {showResetBanner && (
           <Alert className="bg-amber-950/40 border-amber-600/40">
@@ -819,6 +881,8 @@ export function WhatsAppConfig() {
             </Button>
           )}
         </div>
+      </>
+        )}
       </div>
 
       {/* Setup Instructions Sidebar */}
@@ -919,3 +983,4 @@ export function WhatsAppConfig() {
     </section>
   );
 }
+

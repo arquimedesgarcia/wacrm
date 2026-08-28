@@ -16,6 +16,13 @@ import {
   templateContentText,
 } from '@/lib/whatsapp/template-body'
 import { supabaseAdmin } from './admin-client'
+import {
+  resolveProviderForAccount,
+  CapabilityNotSupportedError,
+  ProviderError,
+} from '@/lib/whatsapp/providers'
+import type { WhatsAppConfig } from '@/types'
+import type { SendTextInput, SendTemplateInput } from '@/lib/whatsapp/providers'
 
 // ------------------------------------------------------------
 // Automation-side Meta sender.
@@ -135,16 +142,47 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     throw new Error(`contact phone invalid: ${contact.phone}`)
   }
 
-  const { data: config, error: configErr } = await db
-    .from('whatsapp_config')
-    .select('*')
-    .eq('account_id', input.accountId)
-    .single()
-  if (configErr || !config) {
-    throw new Error('WhatsApp not configured for this account')
+  const { provider, config } = await resolveProviderForAccount(db, input.accountId)
+  const cfg = config as WhatsAppConfig
+
+  if (cfg.provider === 'evolution') {
+    if (input.kind === 'template') {
+      if (!provider.sendTemplate) {
+        throw new Error('template send not supported by current provider')
+      }
+      const result = await provider.sendTemplate(
+        {
+          db,
+          accountId: input.accountId,
+          userId: input.userId,
+          conversationId: input.conversationId,
+          contactId: input.contactId,
+          to: sanitized,
+          templateName: input.templateName,
+          language: input.language,
+          params: input.params ?? [],
+        } as SendTemplateInput,
+        cfg,
+      )
+      return { whatsapp_message_id: result.providerMessageId }
+    }
+
+    const result = await provider.sendText(
+      {
+        db,
+        accountId: input.accountId,
+        userId: input.userId,
+        conversationId: input.conversationId,
+        contactId: input.contactId,
+        to: sanitized,
+        text: input.text,
+      } as SendTextInput,
+      cfg,
+    )
+    return { whatsapp_message_id: result.providerMessageId }
   }
 
-  const accessToken = decrypt(config.access_token)
+  const accessToken = decrypt(cfg.access_token ?? '')
 
   // Local template row — read for the body we persist below, not for
   // the Meta payload (the wire shape is deliberately unchanged here).
@@ -165,7 +203,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
   const attempt = async (phone: string): Promise<string> => {
     if (input.kind === 'template') {
       const r = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
+        phoneNumberId: cfg.phone_number_id ?? '',
         accessToken,
         to: phone,
         templateName: input.templateName,
@@ -175,7 +213,7 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
       return r.messageId
     }
     const r = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
+      phoneNumberId: cfg.phone_number_id ?? '',
       accessToken,
       to: phone,
       text: input.text,
@@ -249,4 +287,10 @@ async function sendViaMeta(input: SendInput): Promise<{ whatsapp_message_id: str
     .eq('id', input.conversationId)
 
   return { whatsapp_message_id: waMessageId }
+}
+
+export function formatProviderError(err: unknown): string {
+  if (err instanceof ProviderError) return err.message
+  if (err instanceof CapabilityNotSupportedError) return err.message
+  return err instanceof Error ? err.message : String(err)
 }

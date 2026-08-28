@@ -42,12 +42,18 @@ import {
   phoneVariants,
   isRecipientNotAllowedError,
 } from '@/lib/whatsapp/phone-utils';
-import type { MessageTemplate } from '@/types';
+import type { MessageTemplate, WhatsAppConfig } from '@/types';
 import {
   resolveTemplateRow,
   templateBodyParams,
   templateContentText,
 } from '@/lib/whatsapp/template-body';
+import {
+  resolveProviderForAccount,
+  CapabilityNotSupportedError,
+  ProviderError,
+} from '@/lib/whatsapp/providers';
+import type { SendTextInput, SendMediaInput, SendTemplateInput } from '@/lib/whatsapp/providers';
 
 export const MEDIA_KINDS = ['image', 'video', 'document', 'audio'] as const;
 export const VALID_MESSAGE_TYPES = [
@@ -266,22 +272,42 @@ export async function sendMessageToConversation(
     );
   }
 
-  const accessToken = decrypt(config.access_token);
+  // Resolve provider from config (Meta by default, Evolution when selected).
+  let provider: Awaited<ReturnType<typeof resolveProviderForAccount>>['provider'];
+  try {
+    const resolved = resolveProviderForAccount(db, accountId);
+    provider = (await resolved).provider;
+  } catch (err) {
+    if (err instanceof ProviderError) {
+      throw new SendMessageError(
+        err.code === 'CONFIGURATION_MISSING' ? 'whatsapp_not_configured' : 'provider_error',
+        err.message,
+        err.code === 'CONFIGURATION_MISSING' ? 400 : 502
+      );
+    }
+    throw err;
+  }
 
-  // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
-  if (isLegacyFormat(config.access_token)) {
-    void db
-      .from('whatsapp_config')
-      .update({ access_token: encrypt(accessToken) })
-      .eq('id', config.id)
-      .then(({ error }: { error: { message: string } | null }) => {
-        if (error) {
-          console.warn(
-            '[send-message] access_token GCM upgrade failed:',
-            error.message
-          );
-        }
-      });
+  // For Meta we still need the decrypted access token for legacy helper paths.
+  let accessToken: string | undefined;
+  if ((config as WhatsAppConfig).provider !== 'evolution') {
+    accessToken = decrypt((config as WhatsAppConfig).access_token ?? '');
+
+    // Self-heal legacy CBC ciphertexts. Fire-and-forget; idempotent.
+    if (isLegacyFormat((config as WhatsAppConfig).access_token ?? '')) {
+      void db
+        .from('whatsapp_config')
+        .update({ access_token: encrypt(accessToken) })
+        .eq('id', config.id)
+        .then(({ error }: { error: { message: string } | null }) => {
+          if (error) {
+            console.warn(
+              '[send-message] access_token GCM upgrade failed:',
+              error.message
+            );
+          }
+        });
+    }
   }
 
   // Resolve the reply target to its Meta message_id. The parent must
@@ -312,6 +338,17 @@ export async function sendMessageToConversation(
     }
   }
 
+  // Common input shared by all provider send calls.
+  const baseInput = {
+    db,
+    accountId,
+    userId: (config as WhatsAppConfig).user_id,
+    conversationId,
+    contactId: contact.id,
+    to: sanitizedPhone,
+    replyToProviderMessageId: contextMessageId,
+  };
+
   // Template row — needed for the send-builder's header + button
   // components AND for the body we persist. The lookup tolerates the
   // en / en_US split so a caller that omits the language still resolves
@@ -337,10 +374,49 @@ export async function sendMessageToConversation(
   }
 
   const attempt = async (phone: string): Promise<string> => {
+    if ((config as WhatsAppConfig).provider === 'evolution') {
+      if (messageType === 'text') {
+        const result = await provider.sendText(
+          { ...baseInput, to: phone, text: contentText! } as SendTextInput,
+          config as WhatsAppConfig
+        );
+        return result.providerMessageId;
+      }
+      if (messageType === 'template') {
+        const result = await provider.sendTemplate!(
+          {
+            ...baseInput,
+            to: phone,
+            templateName: templateName!,
+            language: sendLanguage,
+            params: templateParams ?? [],
+          } as SendTemplateInput,
+          config as WhatsAppConfig
+        );
+        return result.providerMessageId;
+      }
+      if (isMediaKind) {
+        const result = await provider.sendMedia!(
+          {
+            ...baseInput,
+            to: phone,
+            kind: messageType as SendMediaInput['kind'],
+            url: mediaUrl!,
+            caption: contentText || null,
+            filename: filename || null,
+          } as SendMediaInput,
+          config as WhatsAppConfig
+        );
+        return result.providerMessageId;
+      }
+      // Interactive is not supported by Evolution in this phase.
+      throw new CapabilityNotSupportedError('interactive send', 'evolution');
+    }
+
     if (messageType === 'template') {
       const result = await sendTemplateMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+        phoneNumberId: (config as WhatsAppConfig).phone_number_id ?? '',
+        accessToken: accessToken!,
         to: phone,
         templateName: templateName!,
         language: sendLanguage,
@@ -353,8 +429,8 @@ export async function sendMessageToConversation(
     }
     if (isMediaKind) {
       const result = await sendMediaMessage({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+        phoneNumberId: (config as WhatsAppConfig).phone_number_id ?? '',
+        accessToken: accessToken!,
         to: phone,
         kind: messageType as MediaKind,
         link: mediaUrl!,
@@ -368,8 +444,8 @@ export async function sendMessageToConversation(
       const p = interactivePayload!;
       if (p.kind === 'buttons') {
         const result = await sendInteractiveButtons({
-          phoneNumberId: config.phone_number_id,
-          accessToken,
+          phoneNumberId: (config as WhatsAppConfig).phone_number_id ?? '',
+          accessToken: accessToken!,
           to: phone,
           bodyText: p.body,
           headerText: p.header || undefined,
@@ -380,8 +456,8 @@ export async function sendMessageToConversation(
         return result.messageId;
       }
       const result = await sendInteractiveList({
-        phoneNumberId: config.phone_number_id,
-        accessToken,
+        phoneNumberId: (config as WhatsAppConfig).phone_number_id ?? '',
+        accessToken: accessToken!,
         to: phone,
         bodyText: p.body,
         buttonLabel: p.button_label,
@@ -393,8 +469,8 @@ export async function sendMessageToConversation(
       return result.messageId;
     }
     const result = await sendTextMessage({
-      phoneNumberId: config.phone_number_id,
-      accessToken,
+      phoneNumberId: (config as WhatsAppConfig).phone_number_id ?? '',
+      accessToken: accessToken!,
       to: phone,
       text: contentText!,
       contextMessageId,
@@ -431,10 +507,17 @@ export async function sendMessageToConversation(
 
     if (lastError) throw lastError;
   } catch (err) {
+    if (err instanceof CapabilityNotSupportedError) {
+      throw new SendMessageError(
+        'capability_not_supported',
+        err.message,
+        400
+      );
+    }
     const message =
-      err instanceof Error ? err.message : 'Unknown Meta API error';
-    console.error('[send-message] Meta send failed for all variants:', message);
-    throw new SendMessageError('meta_error', `Meta API error: ${message}`, 502);
+      err instanceof Error ? err.message : 'Unknown provider API error';
+    console.error('[send-message] provider send failed for all variants:', message);
+    throw new SendMessageError('provider_error', `Provider API error: ${message}`, 502);
   }
 
   if (workingPhone !== sanitizedPhone) {
