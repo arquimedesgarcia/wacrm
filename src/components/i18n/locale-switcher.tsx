@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { CheckIcon, LanguagesIcon } from 'lucide-react';
+import { LanguagesIcon } from 'lucide-react';
 
 import {
   DropdownMenuSub,
@@ -40,7 +40,7 @@ export function LocaleSwitcher() {
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="w-full">
         <LanguagesIcon className="size-4" />
-        <span className="flex-1">Language / Idioma</span>
+        <span className="flex-1">Language</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         <DropdownMenuRadioGroup
@@ -49,11 +49,6 @@ export function LocaleSwitcher() {
         >
           {SUPPORTED_LOCALES.map((locale) => (
             <DropdownMenuRadioItem key={locale} value={locale}>
-              {locale === current ? (
-                <CheckIcon className="size-4" />
-              ) : (
-                <span className="size-4" />
-              )}
               {LOCALE_LABELS[locale]}
             </DropdownMenuRadioItem>
           ))}

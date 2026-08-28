@@ -102,16 +102,32 @@
 
 Con las decisiones aplicadas, los cambios en archivos del upstream son mínimos y aditivos, delimitados con `// [CUSTOM:i18n start/end]` cuando aplique:
 
-1. `src/i18n/request.ts` — leer `NEXT_PUBLIC_DEFAULT_LOCALE` + fallback legacy.
-2. `src/middleware.ts` — leer cookie `NEXT_LOCALE` y exponer locale al request.
-3. `src/i18n/messages.test.ts` — añadir `'es'` a `TRANSLATED_LOCALES`.
-4. `src/components/layout/header.tsx` — montar `LocaleSwitcher` dentro del menú de cuenta (wrapper mínimo).
-5. `docker-compose.yml` / `Dockerfile` / `.env.local.example` — variable `NEXT_PUBLIC_DEFAULT_LOCALE`.
+1. `src/i18n/request.ts` — leer cookie `NEXT_LOCALE` y `NEXT_PUBLIC_DEFAULT_LOCALE` + fallback legacy.
+2. `src/i18n/messages.test.ts` — añadir `'es'` a `TRANSLATED_LOCALES`.
+3. `src/components/layout/header.tsx` — montar `LocaleSwitcher` dentro del menú de cuenta (wrapper mínimo).
+4. `docker-compose.yml` / `Dockerfile` — variable `NEXT_PUBLIC_DEFAULT_LOCALE`.
+
+Nota: `src/middleware.ts` no se tocó; `request.ts` lee la cookie directamente.
 
 Archivos **nuevos** (no afectan rebase):
 
 - `messages/es.json`
-- `features/i18n/config.ts`
-- `features/i18n/locale.ts`
-- `components/i18n/locale-switcher.tsx`
+- `src/features/i18n/config.ts`
+- `src/features/i18n/locale.ts`
+- `src/components/i18n/locale-switcher.tsx`
 - `specs/*`
+
+---
+
+## Correcciones post-implementación
+
+### Selector de idioma
+
+| # | Corrección | Estado | Archivo afectado |
+|---|------------|--------|------------------|
+| C.1 | Cambiar label de `Language / Idioma` a `Language` (texto fijo en inglés) | done | `src/components/i18n/locale-switcher.tsx` |
+| C.2 | Eliminar check explícito duplicado; dejar solo el indicador nativo de `DropdownMenuRadioItem` | done | `src/components/i18n/locale-switcher.tsx` |
+
+**Notas técnicas**:
+- `DropdownMenuRadioItem` ya renderiza su propio indicador de selección (`RadioItemIndicator`), por lo que el `<CheckIcon>` explícito creaba una marca duplicada.
+- No se tocó ningún componente core del upstream.
