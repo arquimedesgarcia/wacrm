@@ -15,7 +15,6 @@ const MASKED_SECRET = '••••••••••••••••';
 type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
 
 interface EvolutionConfigPanelProps {
-  accountId: string;
   initialConfig: WhatsAppConfigType | null;
   onConfigChange?: (config: WhatsAppConfigType | null) => void;
 }
