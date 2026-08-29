@@ -324,18 +324,35 @@ export class EvolutionAdapter implements WhatsAppProvider {
       ...init,
       headers: {
         'Content-Type': 'application/json',
+        // Evolution v2.3.7 accepts the API key in either the `apikey`
+        // header or `Authorization: Bearer`. Send both to cover both
+        // instance-level and global key configurations.
         apikey: apiKey,
+        Authorization: `Bearer ${apiKey}`,
         ...(init.headers ?? {}),
       },
     })
 
     if (!response.ok) {
-      let message = `Evolution API error: ${response.status}`
+      let message = `Evolution API error: ${response.status} ${response.statusText}`
       try {
-        const body = (await response.json()) as { error?: string; message?: string }
-        if (body.error || body.message) {
-          message = body.error ?? body.message ?? message
+        const body = (await response.json()) as {
+          error?: string
+          message?: string
+          response?: { message?: string } | string
         }
+        // Evolution v2.3.7 nests errors under `response.message` or returns
+        // a flat `error`/`message`. Surface the real reason instead of a
+        // generic status so the user can self-diagnose (e.g. "apikey not
+        // authorized for this instance").
+        const nested =
+          typeof body.response === 'object' && body.response?.message
+            ? body.response.message
+            : typeof body.response === 'string'
+              ? body.response
+              : null
+        const detail = body.error ?? body.message ?? nested
+        if (detail) message = `${message} — ${detail}`
       } catch {
         // ignore non-JSON error body
       }
