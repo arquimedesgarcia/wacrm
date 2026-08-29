@@ -280,13 +280,13 @@ export class EvolutionAdapter implements WhatsAppProvider {
 
     let apiKey: string
     try {
+      // During verification (POST /config) the candidate config carries the
+      // plaintext API key before it is encrypted for storage. decrypt() will
+      // fail on a non-cipher value, so fall back to the raw string in that
+      // case.
       apiKey = decrypt(apiKeyCipher)
-    } catch (err) {
-      throw new ProviderError(
-        'CONFIGURATION_INVALID',
-        'Evolution API key could not be decrypted',
-        { provider: 'evolution', cause: err },
-      )
+    } catch {
+      apiKey = apiKeyCipher as string
     }
 
     return {
