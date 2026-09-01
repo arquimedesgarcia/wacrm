@@ -63,7 +63,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
 
     try {
       const state = await this.#fetchConnectionState(baseUrl, apiKey, instanceName)
-      const stateLower = String(state.state ?? state).toLowerCase()
+      const stateLower = this.#connectionStateValue(state)
       const connected = stateLower === 'open' || stateLower === 'connected'
       return {
         connected,
@@ -331,6 +331,15 @@ export class EvolutionAdapter implements WhatsAppProvider {
     return typeof raw.evolution_instance_id === 'string'
       ? raw.evolution_instance_id
       : undefined
+  }
+
+  #connectionStateValue(payload: Record<string, unknown>): string {
+    const instance = payload.instance
+    if (instance && typeof instance === 'object') {
+      const nested = instance as Record<string, unknown>
+      return String(nested.state ?? nested.status ?? 'unknown').toLowerCase()
+    }
+    return String(payload.state ?? payload.status ?? 'unknown').toLowerCase()
   }
 
   async #fetchConnectionState(
