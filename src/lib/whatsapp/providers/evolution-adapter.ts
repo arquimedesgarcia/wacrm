@@ -8,7 +8,8 @@
 //   - QR pairing
 //   - connection state queries
 //   - text send
-//   - inbound webhook normalization for MESSAGES_UPSERT and status events
+//   - inbound webhook normalization for MESSAGES_UPSERT, MESSAGES_UPDATE,
+//     QRCODE_UPDATED and CONNECTION_UPDATE events
 //
 // Capabilities without equivalent semantics (Meta-style templates,
 // interactive lists) throw CapabilityNotSupportedError.
@@ -36,6 +37,10 @@ import type {
 } from './types'
 import { ProviderError, CapabilityNotSupportedError } from './errors'
 
+const REQUEST_TIMEOUT_MS = 10_000
+const GET_RETRY_DELAY_MS = 500
+const GET_MAX_ATTEMPTS = 2
+
 export class EvolutionAdapter implements WhatsAppProvider {
   readonly kind = 'evolution' as const
 
@@ -43,13 +48,26 @@ export class EvolutionAdapter implements WhatsAppProvider {
     const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
 
     try {
-      await this.#fetchConnectionState(baseUrl, apiKey, instanceName)
+      const state = await this.#fetchConnectionState(baseUrl, apiKey, instanceName)
+      const stateLower = this.#connectionStateValue(state)
+
+      // connectionState returns HTTP 200 even for unknown instances, but
+      // state is undefined. Treat that as "not found" instead of success.
+      if (stateLower === 'unknown') {
+        throw new ProviderError(
+          'PROVIDER_API_ERROR',
+          `Evolution instance "${instanceName}" does not exist or is not reachable`,
+          { provider: 'evolution', status: 404 },
+        )
+      }
+
       return {
         provider: 'evolution',
         displayName: instanceName,
         providerInstanceId: this.#getInstanceId(config) ?? instanceName,
       }
     } catch (err) {
+      if (err instanceof ProviderError) throw err
       throw new ProviderError(
         'PROVIDER_API_ERROR',
         err instanceof Error ? err.message : 'Evolution verification failed',
@@ -64,15 +82,14 @@ export class EvolutionAdapter implements WhatsAppProvider {
     try {
       const state = await this.#fetchConnectionState(baseUrl, apiKey, instanceName)
       const stateLower = this.#connectionStateValue(state)
-      const connected = stateLower === 'open' || stateLower === 'connected'
       return {
-        connected,
+        connected: stateLower === 'open',
         detail: stateLower,
       }
     } catch (err) {
       return {
         connected: false,
-        detail: err instanceof Error ? err.message : 'unknown',
+        detail: this.#safeErrorDetail(err),
       }
     }
   }
@@ -83,32 +100,35 @@ export class EvolutionAdapter implements WhatsAppProvider {
     const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
 
     try {
-      // Only create the instance when it does not exist yet.
-      // POST /instance/create requires the GLOBAL apikey and fails (403/409)
-      // when the instance is already registered, so probe it first.
       const exists = await this.#instanceExists(baseUrl, apiKey, instanceName)
 
       if (!exists) {
         try {
-          await this.#request(`${baseUrl}/instance/create`, apiKey, {
-            method: 'POST',
-            body: JSON.stringify({
-              instanceName,
-              qrcode: true,
-              // Do not set webhook here; the caller owns webhook configuration.
-            }),
-          })
+          await this.#request(
+            `${baseUrl}/instance/create`,
+            apiKey,
+            {
+              method: 'POST',
+              body: JSON.stringify({
+                instanceName,
+                qrcode: true,
+                integration: 'WHATSAPP-BAILEYS',
+              }),
+            },
+            { allowRetry: false },
+          )
         } catch (err) {
-          const message = err instanceof Error ? err.message : String(err)
-          // Another request may have created it in the meantime; tolerate
-          // "already exists" style errors and continue to the QR step.
-          if (!/already|exists|409/i.test(message)) throw err
+          // Race condition: another request created it in the meantime.
+          const isAlreadyExists =
+            err instanceof ProviderError &&
+            (err.status === 400 || err.status === 409 || /already|exists/i.test(err.message))
+          if (!isAlreadyExists) throw err
         }
       }
 
-      const { qr, status } = await this.getQrCode(config)
-      return { qr, status }
+      return this.getQrCode(config)
     } catch (err) {
+      if (err instanceof ProviderError) throw err
       throw new ProviderError(
         'PROVIDER_API_ERROR',
         err instanceof Error ? err.message : 'Evolution create/connect failed',
@@ -127,7 +147,12 @@ export class EvolutionAdapter implements WhatsAppProvider {
         `${baseUrl}/instance/connect/${encodeURIComponent(instanceName)}`,
         apiKey,
         { method: 'GET' },
+        { allowRetry: true },
       )
+
+      if (this.#isErrorResponse(data)) {
+        throw this.#providerErrorFromResponse(data, 404)
+      }
 
       let status = await this.getConnectionStatus(config)
       let qrCode = this.#extractQrCode(data)
@@ -141,8 +166,11 @@ export class EvolutionAdapter implements WhatsAppProvider {
             `${baseUrl}/instance/connect/${encodeURIComponent(instanceName)}`,
             apiKey,
             { method: 'GET' },
+            { allowRetry: true },
           )
-          qrCode = this.#extractQrCode(retry)
+          if (!this.#isErrorResponse(retry)) {
+            qrCode = this.#extractQrCode(retry)
+          }
         } catch {
           // keep the original result
         }
@@ -158,6 +186,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
 
       return { qr: qrCode, status }
     } catch (err) {
+      if (err instanceof ProviderError) throw err
       throw new ProviderError(
         'PROVIDER_API_ERROR',
         err instanceof Error ? err.message : 'Evolution QR fetch failed',
@@ -167,7 +196,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
   }
 
   async sendText(input: SendTextInput, config: WhatsAppConfig): Promise<SendResult> {
-    const { to, text, replyToProviderMessageId } = input
+    const { to, text } = input
     const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
     const phone = normalizeOutboundPhone(to)
 
@@ -183,9 +212,11 @@ export class EvolutionAdapter implements WhatsAppProvider {
       number: phone,
       text,
     }
-    if (replyToProviderMessageId) {
-      body.quotedMessageId = replyToProviderMessageId
-    }
+
+    // Note: Evolution v2.3.7 supports quoted replies via a full
+    // { key, message } structure. WaCRM does not yet store the quoted
+    // message body from Evolution, so we omit quoting to avoid sending
+    // an invalid payload.
 
     try {
       const data = (await this.#request(
@@ -195,13 +226,12 @@ export class EvolutionAdapter implements WhatsAppProvider {
           method: 'POST',
           body: JSON.stringify(body),
         },
-      )) as { key?: { id?: string }; messageTimestamp?: number; status?: string }
+        { allowRetry: false },
+      )) as Record<string, unknown>
 
+      const key = (data.key ?? {}) as Record<string, unknown>
       const providerMessageId =
-        data.key?.id ??
-        // Fallback: some Evolution responses use a flat id field.
-        (data as unknown as { id?: string }).id ??
-        `evolution-${Date.now()}`
+        String(key.id ?? data.keyId ?? `evolution-${Date.now()}`)
 
       return {
         provider: 'evolution',
@@ -209,6 +239,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
         status: this.#normalizeStatus(data.status),
       }
     } catch (err) {
+      if (err instanceof ProviderError) throw err
       throw new ProviderError(
         'PROVIDER_API_ERROR',
         err instanceof Error ? err.message : 'Evolution send failed',
@@ -230,11 +261,51 @@ export class EvolutionAdapter implements WhatsAppProvider {
   }
 
   /**
+   * Configure the instance webhook on Evolution.
+   *
+   * Evolution v2.3.7 uses POST /webhook/set/{instanceName} with a
+   * nested `webhook` object. The caller supplies the public URL where
+   * WaCRM receives events and the secret that Evolution must send in
+   * the `apikey` header.
+   */
+  async configureWebhook(
+    config: WhatsAppConfig,
+    webhookUrl: string,
+    webhookSecret: string,
+  ): Promise<void> {
+    const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
+
+    await this.#request(
+      `${baseUrl}/webhook/set/${encodeURIComponent(instanceName)}`,
+      apiKey,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          webhook: {
+            enabled: true,
+            url: webhookUrl,
+            byEvents: false,
+            base64: false,
+            headers: { apikey: webhookSecret },
+            events: [
+              'MESSAGES_UPSERT',
+              'MESSAGES_UPDATE',
+              'QRCODE_UPDATED',
+              'CONNECTION_UPDATE',
+            ],
+          },
+        }),
+      },
+      { allowRetry: false },
+    )
+  }
+
+  /**
    * Normalize Evolution webhook payloads.
    *
    * Supports:
    *   - messages.upsert (incoming text, media metadata)
-   *   - status update events delivered as message updates with status
+   *   - messages.update (status updates)
    *   - qrcode.updated (emitted as connection event with QR payload)
    *   - connection.update
    *
@@ -250,6 +321,9 @@ export class EvolutionAdapter implements WhatsAppProvider {
       case 'messages.upsert':
       case 'messages_upsert':
         return this.#normalizeMessagesUpsert(p)
+      case 'messages.update':
+      case 'messages_update':
+        return this.#normalizeMessagesUpdate(p)
       case 'qrcode.updated':
       case 'qrcode_updated':
         return this.#normalizeQrCode(p)
@@ -257,14 +331,6 @@ export class EvolutionAdapter implements WhatsAppProvider {
       case 'connection_update':
         return this.#normalizeConnectionUpdate(p)
       default:
-        // Best-effort: if it looks like a message update with status,
-        // normalize as status event.
-        if (p.data && typeof p.data === 'object') {
-          const data = p.data as Record<string, unknown>
-          if ('status' in data && 'id' in data) {
-            return this.#normalizeStatusEvent(p)
-          }
-        }
         return []
     }
   }
@@ -280,14 +346,34 @@ export class EvolutionAdapter implements WhatsAppProvider {
   } {
     const raw = config as unknown as Record<string, unknown>
 
-    const baseUrl = raw.evolution_base_url
+    const baseUrlRaw = raw.evolution_base_url
     const apiKeyCipher = raw.evolution_api_key
-    const instanceName = raw.evolution_instance_name
+    const instanceNameRaw = raw.evolution_instance_name
 
-    if (!baseUrl || typeof baseUrl !== 'string') {
+    if (!baseUrlRaw || typeof baseUrlRaw !== 'string') {
       throw new ProviderError(
         'CONFIGURATION_INVALID',
         'Evolution base URL is missing',
+        { provider: 'evolution' },
+      )
+    }
+
+    const baseUrl = baseUrlRaw.replace(/\/+$/, '')
+
+    try {
+      new URL(baseUrl)
+    } catch {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        'Evolution base URL is not a valid URL',
+        { provider: 'evolution' },
+      )
+    }
+
+    if (!/^https?:\/\/.+/i.test(baseUrl)) {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        'Evolution base URL must use http or https',
         { provider: 'evolution' },
       )
     }
@@ -300,7 +386,26 @@ export class EvolutionAdapter implements WhatsAppProvider {
       )
     }
 
-    if (!instanceName || typeof instanceName !== 'string') {
+    let apiKey: string
+    try {
+      apiKey = decrypt(apiKeyCipher)
+    } catch {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        'Evolution API key is not encrypted or is corrupted',
+        { provider: 'evolution' },
+      )
+    }
+
+    if (!apiKey) {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        'Evolution API key is empty after decryption',
+        { provider: 'evolution' },
+      )
+    }
+
+    if (!instanceNameRaw || typeof instanceNameRaw !== 'string') {
       throw new ProviderError(
         'CONFIGURATION_INVALID',
         'Evolution instance name is missing',
@@ -308,22 +413,24 @@ export class EvolutionAdapter implements WhatsAppProvider {
       )
     }
 
-    let apiKey: string
-    try {
-      // During verification (POST /config) the candidate config carries the
-      // plaintext API key before it is encrypted for storage. decrypt() will
-      // fail on a non-cipher value, so fall back to the raw string in that
-      // case.
-      apiKey = decrypt(apiKeyCipher)
-    } catch {
-      apiKey = apiKeyCipher as string
+    const instanceName = instanceNameRaw.trim()
+    if (!instanceName) {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        'Evolution instance name is empty',
+        { provider: 'evolution' },
+      )
     }
 
-    return {
-      baseUrl: baseUrl.replace(/\/+$/, ''),
-      apiKey,
-      instanceName,
+    if (/[\/\\]/.test(instanceName)) {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        'Evolution instance name cannot contain path separators',
+        { provider: 'evolution' },
+      )
     }
+
+    return { baseUrl, apiKey, instanceName }
   }
 
   #getInstanceId(config: WhatsAppConfig): string | undefined {
@@ -347,17 +454,18 @@ export class EvolutionAdapter implements WhatsAppProvider {
     apiKey: string,
     instanceName: string,
   ): Promise<Record<string, unknown>> {
-    return this.#request(
+    return (await this.#request(
       `${baseUrl}/instance/connectionState/${encodeURIComponent(instanceName)}`,
       apiKey,
       { method: 'GET' },
-    ) as Promise<Record<string, unknown>>
+      { allowRetry: true },
+    )) as Record<string, unknown>
   }
 
   /**
    * Returns true when the instance is already registered on the Evolution
-   * server. Uses GET /instance/connectionState, which works with either the
-   * global apikey or the instance token (unlike POST /instance/create).
+   * server. connectionState returns 200 for missing instances but with an
+   * undefined state, so we key off the presence of a string state value.
    */
   async #instanceExists(
     baseUrl: string,
@@ -365,8 +473,13 @@ export class EvolutionAdapter implements WhatsAppProvider {
     instanceName: string,
   ): Promise<boolean> {
     try {
-      await this.#fetchConnectionState(baseUrl, apiKey, instanceName)
-      return true
+      const state = await this.#fetchConnectionState(baseUrl, apiKey, instanceName)
+      const instance = state.instance
+      return (
+        !!instance &&
+        typeof instance === 'object' &&
+        typeof (instance as Record<string, unknown>).state === 'string'
+      )
     } catch {
       return false
     }
@@ -376,51 +489,141 @@ export class EvolutionAdapter implements WhatsAppProvider {
     url: string,
     apiKey: string,
     init: RequestInit,
+    options: { allowRetry?: boolean } = {},
   ): Promise<unknown> {
-    const response = await fetch(url, {
-      ...init,
-      headers: {
-        'Content-Type': 'application/json',
-        // Evolution v2.3.7 accepts the API key in either the `apikey`
-        // header or `Authorization: Bearer`. Send both to cover both
-        // instance-level and global key configurations.
-        apikey: apiKey,
-        Authorization: `Bearer ${apiKey}`,
-        ...(init.headers ?? {}),
-      },
-    })
+    const headers: Record<string, string> = {}
+    if (init.body !== undefined) {
+      headers['Content-Type'] = 'application/json'
+    }
+    // Evolution v2.3.7 only reads the `apikey` header. Do not send
+    // Authorization: Bearer — it is ignored and leaks the key to any
+    // proxy that logs Authorization.
+    headers['apikey'] = apiKey
 
-    if (!response.ok) {
-      let message = `Evolution API error: ${response.status} ${response.statusText}`
+    const execute = async (): Promise<Response> => {
+      const controller = new AbortController()
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
       try {
-        const body = (await response.json()) as {
-          error?: string
-          message?: string
-          response?: { message?: string } | string
-        }
-        // Evolution v2.3.7 nests errors under `response.message` or returns
-        // a flat `error`/`message`. Surface the real reason instead of a
-        // generic status so the user can self-diagnose (e.g. "apikey not
-        // authorized for this instance").
-        const nested =
-          typeof body.response === 'object' && body.response?.message
-            ? body.response.message
-            : typeof body.response === 'string'
-              ? body.response
-              : null
-        const detail = body.error ?? body.message ?? nested
-        if (detail) message = `${message} — ${detail}`
-      } catch {
-        // ignore non-JSON error body
+        return await fetch(url, {
+          ...init,
+          headers: { ...headers, ...(init.headers ?? {}) },
+          redirect: 'manual',
+          signal: controller.signal,
+        })
+      } finally {
+        clearTimeout(timeout)
       }
-      throw new Error(message)
     }
 
-    try {
-      return await response.json()
-    } catch {
-      return {}
+    const maxAttempts = options.allowRetry ? GET_MAX_ATTEMPTS : 1
+    let lastError: unknown = null
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        const response = await execute()
+
+        if (!response.ok) {
+          if (
+            options.allowRetry &&
+            attempt < maxAttempts - 1 &&
+            response.status >= 500
+          ) {
+            await new Promise((resolve) => setTimeout(resolve, GET_RETRY_DELAY_MS))
+            continue
+          }
+          throw await this.#apiError(response)
+        }
+
+        try {
+          return await response.json()
+        } catch {
+          return {}
+        }
+      } catch (err) {
+        lastError = err
+        if (options.allowRetry && attempt < maxAttempts - 1) {
+          await new Promise((resolve) => setTimeout(resolve, GET_RETRY_DELAY_MS))
+          continue
+        }
+        if (err instanceof ProviderError) throw err
+        throw this.#networkError(err)
+      }
     }
+
+    if (lastError instanceof ProviderError) throw lastError
+    throw this.#networkError(lastError)
+  }
+
+  async #apiError(response: Response): Promise<ProviderError> {
+    let detail: string | null = null
+    try {
+      const body = (await response.json()) as {
+        error?: boolean | string
+        message?: string
+        response?: { message?: string } | string
+        status?: number
+      }
+
+      if (body.error === true && typeof body.message === 'string') {
+        detail = body.message
+      } else if (typeof body.error === 'string') {
+        detail = body.error
+      } else if (typeof body.message === 'string') {
+        detail = body.message
+      } else if (
+        body.response &&
+        typeof body.response === 'object' &&
+        body.response.message
+      ) {
+        detail = body.response.message
+      } else if (typeof body.response === 'string') {
+        detail = body.response
+      }
+    } catch {
+      // ignore non-JSON error body
+    }
+
+    const message = detail
+      ? `Evolution API error: ${response.status} ${response.statusText} — ${detail}`
+      : `Evolution API error: ${response.status} ${response.statusText}`
+
+    return new ProviderError('PROVIDER_API_ERROR', message, {
+      provider: 'evolution',
+      status: response.status,
+    })
+  }
+
+  #networkError(err: unknown): ProviderError {
+    const message = err instanceof Error ? err.message : String(err)
+    return new ProviderError(
+      'PROVIDER_API_ERROR',
+      `Evolution API unreachable: ${message}`,
+      { provider: 'evolution', cause: err },
+    )
+  }
+
+  #isErrorResponse(data: unknown): data is { error: true; message?: string; status?: number } {
+    return (
+      !!data &&
+      typeof data === 'object' &&
+      (data as Record<string, unknown>).error === true
+    )
+  }
+
+  #providerErrorFromResponse(
+    data: Record<string, unknown>,
+    fallbackStatus: number,
+  ): ProviderError {
+    const message =
+      typeof data.message === 'string'
+        ? data.message
+        : 'Evolution API returned an error'
+    const status =
+      typeof data.status === 'number' ? data.status : fallbackStatus
+    return new ProviderError('PROVIDER_API_ERROR', message, {
+      provider: 'evolution',
+      status,
+    })
   }
 
   #extractQrCode(data: unknown): QrCode | null {
@@ -435,7 +638,8 @@ export class EvolutionAdapter implements WhatsAppProvider {
     const seen = new Set<unknown>()
 
     const walk = (node: unknown, depth = 0): string | null => {
-      if (!node || typeof node !== 'object' || depth > 6 || seen.has(node)) return null
+      if (!node || typeof node !== 'object' || depth > 6 || seen.has(node))
+        return null
       seen.add(node)
 
       if (Array.isArray(node)) {
@@ -468,7 +672,13 @@ export class EvolutionAdapter implements WhatsAppProvider {
     const code = walk(data)
     if (!code) return null
 
-    const base64 = code.startsWith('data:') ? code : `data:image/png;base64,${code}`
+    // Ignore very short strings such as pairing codes if they somehow end
+    // up under a searched key.
+    if (code.length < 12) return null
+
+    const base64 = code.startsWith('data:')
+      ? code
+      : `data:image/png;base64,${code}`
     return { base64, raw: code }
   }
 
@@ -477,6 +687,35 @@ export class EvolutionAdapter implements WhatsAppProvider {
     if (s === 'pending' || s === 'sending') return 'sending'
     if (s === 'failed' || s === 'error') return 'failed'
     return 'sent'
+  }
+
+  #providerInstanceId(payload: Record<string, unknown>): string {
+    const fromInstance = payload.instance
+    if (typeof fromInstance === 'string' && fromInstance) {
+      return fromInstance
+    }
+
+    const data = payload.data
+    if (data && typeof data === 'object') {
+      const d = data as Record<string, unknown>
+      if (typeof d.instanceId === 'string' && d.instanceId) {
+        return d.instanceId
+      }
+    }
+
+    const fromId = payload.instanceId
+    if (typeof fromId === 'string' && fromId) {
+      return fromId
+    }
+
+    return 'unknown'
+  }
+
+  #sanitizeRawPayload(payload: Record<string, unknown>): Record<string, unknown> {
+    const clone = { ...payload }
+    delete clone.apikey
+    delete clone.server_url
+    return clone
   }
 
   #normalizeMessagesUpsert(payload: Record<string, unknown>): NormalizedWebhookEvent[] {
@@ -500,33 +739,13 @@ export class EvolutionAdapter implements WhatsAppProvider {
       const fromPhone = normalizeInboundPhone(fromJid)
       if (!fromPhone) continue
 
-      const providerInstanceId =
-        typeof payload.instanceId === 'string'
-          ? payload.instanceId
-          : typeof d.instanceId === 'string'
-            ? d.instanceId
-            : 'unknown'
-
+      const providerInstanceId = this.#providerInstanceId(payload)
       const providerMessageId = String(key.id ?? `evolution-${Date.now()}`)
       const isFromMe = key.fromMe === true
       const timestamp = normalizeTimestamp(
         (m.messageTimestamp as string | number | undefined) ??
           (messageContent.messageTimestamp as string | number | undefined),
       )
-
-      // Status-only update on a message we sent.
-      if (m.status && typeof m.status === 'string') {
-        events.push({
-          provider: 'evolution',
-          providerInstanceId,
-          providerMessageId,
-          recipientPhone: fromPhone,
-          status: this.#mapInboundStatus(m.status),
-          timestamp,
-          errorMessage: null,
-        } as NormalizedStatusEvent)
-        continue
-      }
 
       const conversationContent = (
         messageContent.conversation ?? {}
@@ -537,15 +756,15 @@ export class EvolutionAdapter implements WhatsAppProvider {
           : String(conversationContent.text ?? messageContent.text ?? '')
 
       const type = normalizeContentType(
-        messageContent.image
+        messageContent.imageMessage || messageContent.stickerMessage
           ? 'image'
-          : messageContent.video
+          : messageContent.videoMessage
             ? 'video'
-            : messageContent.audio
+            : messageContent.audioMessage
               ? 'audio'
-              : messageContent.document
+              : messageContent.documentMessage
                 ? 'document'
-                : messageContent.location
+                : messageContent.locationMessage
                   ? 'location'
                   : 'text',
       )
@@ -573,6 +792,38 @@ export class EvolutionAdapter implements WhatsAppProvider {
     return events
   }
 
+  #normalizeMessagesUpdate(payload: Record<string, unknown>): NormalizedWebhookEvent[] {
+    const data = payload.data
+    if (!data || typeof data !== 'object') return []
+
+    const updates = Array.isArray(data) ? data : [data]
+    const providerInstanceId = this.#providerInstanceId(payload)
+    const events: NormalizedWebhookEvent[] = []
+
+    for (const u of updates) {
+      if (!u || typeof u !== 'object') continue
+      const update = u as Record<string, unknown>
+
+      const key = (update.key ?? {}) as Record<string, unknown>
+      const keyId = String(update.keyId ?? key.id ?? '')
+      const remoteJid = String(update.remoteJid ?? key.remoteJid ?? '')
+
+      if (!keyId) continue
+
+      events.push({
+        provider: 'evolution',
+        providerInstanceId,
+        providerMessageId: keyId,
+        recipientPhone: normalizeInboundPhone(remoteJid),
+        status: this.#mapInboundStatus(String(update.status ?? 'sent')),
+        timestamp: normalizeTimestamp(update.messageTimestamp as string | number | undefined),
+        errorMessage: typeof update.error === 'string' ? update.error : null,
+      } as NormalizedStatusEvent)
+    }
+
+    return events
+  }
+
   #normalizeQrCode(payload: Record<string, unknown>): NormalizedWebhookEvent[] {
     const data = payload.data
     const qr = data && typeof data === 'object' ? this.#extractQrCode(data) : null
@@ -580,12 +831,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
     return [
       {
         provider: 'evolution',
-        providerInstanceId: String(
-          payload.instanceId ??
-            (data && typeof data === 'object'
-              ? (data as Record<string, unknown>).instanceId ?? 'unknown'
-              : 'unknown'),
-        ),
+        providerInstanceId: this.#providerInstanceId(payload),
         providerMessageId: `qr-${Date.now()}`,
         senderPhone: '',
         displayName: null,
@@ -597,7 +843,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
         mediaType: qr ? 'image/png' : null,
         replyToProviderMessageId: null,
         interactiveReplyId: null,
-        rawPayload: payload,
+        rawPayload: this.#sanitizeRawPayload(payload),
       },
     ]
   }
@@ -614,12 +860,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
     return [
       {
         provider: 'evolution',
-        providerInstanceId: String(
-          payload.instanceId ??
-            (data && typeof data === 'object'
-              ? (data as Record<string, unknown>).instanceId ?? 'unknown'
-              : 'unknown'),
-        ),
+        providerInstanceId: this.#providerInstanceId(payload),
         providerMessageId: `conn-${Date.now()}`,
         senderPhone: '',
         displayName: null,
@@ -631,30 +872,8 @@ export class EvolutionAdapter implements WhatsAppProvider {
         mediaType: null,
         replyToProviderMessageId: null,
         interactiveReplyId: null,
-        rawPayload: payload,
+        rawPayload: this.#sanitizeRawPayload(payload),
       },
-    ]
-  }
-
-  #normalizeStatusEvent(payload: Record<string, unknown>): NormalizedWebhookEvent[] {
-    const data = payload.data as Record<string, unknown>
-    const providerInstanceId = String(
-      payload.instanceId ??
-        (data && typeof data === 'object'
-          ? (data as Record<string, unknown>).instanceId ?? 'unknown'
-          : 'unknown'),
-    )
-
-    return [
-      {
-        provider: 'evolution',
-        providerInstanceId,
-        providerMessageId: String(data.id ?? `status-${Date.now()}`),
-        recipientPhone: normalizeInboundPhone(String(data.remoteJid ?? '')),
-        status: this.#mapInboundStatus(String(data.status ?? 'sent')),
-        timestamp: normalizeTimestamp(data.timestamp as string | number | undefined),
-        errorMessage: typeof data.error === 'string' ? data.error : null,
-      } as NormalizedStatusEvent,
     ]
   }
 
@@ -678,5 +897,11 @@ export class EvolutionAdapter implements WhatsAppProvider {
       default:
         return 'sent'
     }
+  }
+
+  #safeErrorDetail(err: unknown): string {
+    if (err instanceof ProviderError) return err.message
+    if (err instanceof Error) return err.message
+    return 'unknown'
   }
 }

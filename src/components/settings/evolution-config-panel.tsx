@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Copy, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Copy, RotateCcw, AlertTriangle, Info } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import type { WhatsAppConfig as WhatsAppConfigType } from '@/types';
@@ -40,6 +41,7 @@ export function EvolutionConfigPanel({
   const [webhookSecret, setWebhookSecret] = useState(MASKED_SECRET);
   const [webhookSecretEdited, setWebhookSecretEdited] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
+  const [createInstance, setCreateInstance] = useState(true);
 
   const [qrCode, setQrCode] = useState<string | null>(null);
 
@@ -53,8 +55,12 @@ export function EvolutionConfigPanel({
       toast.error('Base URL and Instance Name are required');
       return;
     }
-    if (!config && (!apiKey.trim() || !apiKeyEdited)) {
+    if (!config && (!apiKey.trim() || !apiKeyEdited || apiKey === MASKED_SECRET)) {
       toast.error('API Key is required for initial setup');
+      return;
+    }
+    if (!config && (!webhookSecret.trim() || webhookSecret === MASKED_SECRET)) {
+      toast.error('Webhook Secret is required for initial setup');
       return;
     }
 
@@ -63,7 +69,7 @@ export function EvolutionConfigPanel({
       const payload: Record<string, unknown> = {
         base_url: baseUrl.trim(),
         instance_name: instanceName.trim(),
-        create_instance: true,
+        create_instance: createInstance,
       };
 
       if (apiKeyEdited && apiKey !== MASKED_SECRET && apiKey.trim()) {
@@ -76,8 +82,12 @@ export function EvolutionConfigPanel({
 
       if (webhookSecretEdited && webhookSecret !== MASKED_SECRET && webhookSecret.trim()) {
         payload.webhook_secret = webhookSecret.trim();
-      } else if (config && webhookSecret !== MASKED_SECRET) {
+      } else if (config && webhookSecret !== MASKED_SECRET && webhookSecret.trim()) {
         payload.webhook_secret = webhookSecret.trim();
+      } else if (!config) {
+        toast.error('Webhook Secret is required');
+        setSaving(false);
+        return;
       }
 
       const res = await fetch('/api/whatsapp/evolution/config', {
@@ -177,6 +187,7 @@ export function EvolutionConfigPanel({
       setInstanceName('');
       setWebhookSecret('');
       setWebhookSecretEdited(false);
+      setCreateInstance(true);
       setConnectionStatus('disconnected');
       setStatusMessage('');
       setQrCode(null);
@@ -206,6 +217,21 @@ export function EvolutionConfigPanel({
             Evolution API with Baileys / WhatsApp Web is intended for development and
             testing. It is not equivalent to the official WhatsApp Cloud API and may be
             subject to disconnections or restrictions.
+          </AlertDescription>
+        </div>
+      </Alert>
+
+      <Alert className="bg-blue-950/30 border-blue-700/50">
+        <Info className="size-5 text-blue-400 mt-0.5 shrink-0" />
+        <div className="flex-1">
+          <AlertTitle className="text-blue-200 mb-1">
+            Evolution API notice
+          </AlertTitle>
+          <AlertDescription className="text-blue-100/80 text-sm">
+            Evolution API is licensed under Apache 2.0 with additional brand and
+            attribution conditions. A visible notice of use is required. For commercial
+            redistribution, review the Evolution API license and consider a commercial
+            license if the notice conditions cannot be met.
           </AlertDescription>
         </div>
       </Alert>
@@ -328,8 +354,20 @@ export function EvolutionConfigPanel({
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Must match the secret Evolution sends in the <code>apikey</code> header.
+              Required. WaCRM will configure Evolution to send this value in the{' '}
+              <code>apikey</code> header.
             </p>
+          </div>
+
+          <div className="flex items-center gap-2 pt-2">
+            <Checkbox
+              id="create-instance"
+              checked={createInstance}
+              onCheckedChange={(checked) => setCreateInstance(checked === true)}
+            />
+            <Label htmlFor="create-instance" className="text-muted-foreground text-sm cursor-pointer">
+              Create instance if it does not exist
+            </Label>
           </div>
         </CardContent>
       </Card>
@@ -338,7 +376,7 @@ export function EvolutionConfigPanel({
         <CardHeader>
           <CardTitle className="text-foreground">Webhook URL</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Add this URL to your Evolution instance webhook configuration.
+            WaCRM will register this URL on your Evolution instance automatically.
           </CardDescription>
         </CardHeader>
         <CardContent>

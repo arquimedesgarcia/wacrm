@@ -18,6 +18,10 @@ import { NextResponse, after } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { decrypt } from '@/lib/whatsapp/encryption'
 import { EvolutionAdapter } from '@/lib/whatsapp/providers/evolution-adapter'
+import {
+  extractInstanceName,
+  sanitizeWebhookPayload,
+} from '@/lib/whatsapp/providers/evolution-webhook-helpers'
 import { normalizeInboundPhone } from '@/lib/whatsapp/providers/normalize'
 import { findExistingContact, isUniqueViolation } from '@/lib/contacts/dedupe'
 import { reopenClosedConversation } from '@/lib/conversations/reopen'
@@ -45,9 +49,9 @@ function supabaseAdmin() {
 /**
  * POST handler for Evolution webhooks.
  *
- * Auth: Evolution v2.3.7 sends the instance API key in the `apikey`
- * header. We compare it against the stored evolution_webhook_secret
- * (decrypted). If the secret is not configured, we reject.
+ * Auth: Evolution v2.3.7 sends the configured custom header. We expect
+ * the webhook to be configured with `apikey: <webhook_secret>` and we
+ * compare it against the stored `evolution_webhook_secret` (decrypted).
  */
 export async function POST(request: Request) {
   const rawBody = await request.text()
@@ -79,14 +83,22 @@ export async function POST(request: Request) {
 
   const { config, accountId } = resolution
 
+  // Only process webhooks for accounts that are actively using Evolution.
+  if (config.provider !== 'evolution') {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   if (!authenticateWebhook(request, config)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Strip secrets from the payload before any logging or processing.
+  const sanitizedPayload = sanitizeWebhookPayload(payload)
+
   // Ack quickly, process in the background.
   after(async () => {
     try {
-      await processEvolutionWebhook(payload, accountId, config.user_id as string)
+      await processEvolutionWebhook(sanitizedPayload, accountId, config.user_id as string)
     } catch (error) {
       console.error('[evolution webhook] processing error:', error)
     }
@@ -141,28 +153,6 @@ function authenticateWebhook(
     request.headers.get('x-evolution-api-secret') ??
     ''
   return sent === expected
-}
-
-function extractInstanceName(payload: unknown): string | null {
-  if (!payload || typeof payload !== 'object') return null
-  const p = payload as Record<string, unknown>
-
-  const fromData =
-    p.instanceName ??
-    (p.data && typeof p.data === 'object'
-      ? (p.data as Record<string, unknown>).instanceName
-      : undefined)
-  if (typeof fromData === 'string' && fromData) return fromData
-
-  // Fallback: some Evolution payloads carry the instance name under
-  // `instance.name` or a nested object.
-  const instance = p.instance
-  if (instance && typeof instance === 'object') {
-    const name = (instance as Record<string, unknown>).instanceName
-    if (typeof name === 'string' && name) return name
-  }
-
-  return null
 }
 
 // ============================================================

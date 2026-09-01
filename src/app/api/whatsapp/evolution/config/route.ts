@@ -2,24 +2,30 @@
 // Evolution API configuration endpoints.
 //
 // GET  -> load config + connection state
-// POST -> save/update config, create instance, return QR if needed
+// POST -> save/update config, create instance, configure webhook,
+//         return QR if needed
 // DELETE -> remove config
 //
 // These endpoints are separate from /api/whatsapp/config because
 // Evolution uses a completely different credential shape and
 // verification flow.
+//
+// POST/DELETE require the 'admin' role because switching WhatsApp
+// provider is an account-level administrative operation.
 // ============================================================
 
 import { NextResponse } from 'next/server'
 import type { ConnectionStatus } from '@/lib/whatsapp/providers/types'
-import { createClient } from '@/lib/supabase/server'
+import { getCurrentAccount, requireRole } from '@/lib/auth/account'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
-import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
+import { encrypt } from '@/lib/whatsapp/encryption'
 import { EvolutionAdapter } from '@/lib/whatsapp/providers/evolution-adapter'
+import { ProviderError } from '@/lib/whatsapp/providers'
+import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import type { WhatsAppConfig } from '@/types'
 
 async function resolveAccountId(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof getCurrentAccount>>['supabase'],
   userId: string,
 ): Promise<string | null> {
   const { data, error } = await supabase
@@ -45,13 +51,9 @@ function supabaseAdmin() {
 
 export async function GET() {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    const { supabase, userId } = await getCurrentAccount()
 
-    const accountId = await resolveAccountId(supabase, user.id)
+    const accountId = await resolveAccountId(supabase, userId)
     if (!accountId) {
       return NextResponse.json(
         { connected: false, reason: 'no_account', message: 'Profile not linked to an account.' },
@@ -109,16 +111,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json({ error: 'Profile not linked to an account.' }, { status: 403 })
-    }
+    const { supabase, userId, accountId } = await requireRole('admin')
 
     const body = await request.json()
     const {
@@ -129,19 +122,35 @@ export async function POST(request: Request) {
       create_instance = true,
     } = body
 
-    if (!base_url || !api_key || !instance_name) {
+    if (!base_url || !api_key || !instance_name || !webhook_secret) {
       return NextResponse.json(
-        { error: 'base_url, api_key and instance_name are required' },
+        { error: 'base_url, api_key, instance_name and webhook_secret are required' },
         { status: 400 }
       )
     }
 
     const normalizedBaseUrl = String(base_url).replace(/\/+$/, '')
     const normalizedInstance = String(instance_name).trim()
+    const trimmedWebhookSecret = String(webhook_secret).trim()
 
     if (!/^https?:\/\/.+/i.test(normalizedBaseUrl)) {
       return NextResponse.json(
         { error: 'base_url must be a valid http(s) URL' },
+        { status: 400 }
+      )
+    }
+
+    const deliverable = await isDeliverableUrl(normalizedBaseUrl)
+    if (!deliverable) {
+      return NextResponse.json(
+        { error: 'base_url must resolve to a publicly-routable address' },
+        { status: 400 }
+      )
+    }
+
+    if (/[\/\\]/.test(normalizedInstance)) {
+      return NextResponse.json(
+        { error: 'instance_name cannot contain path separators' },
         { status: 400 }
       )
     }
@@ -166,23 +175,38 @@ export async function POST(request: Request) {
       )
     }
 
+    // Encrypt secrets before any external call or persistence.
+    let encryptedApiKey: string
+    let encryptedWebhookSecret: string
+    try {
+      encryptedApiKey = encrypt(api_key)
+      encryptedWebhookSecret = encrypt(trimmedWebhookSecret)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown encryption error'
+      console.error('[evolution/config POST] encryption failed:', message)
+      return NextResponse.json(
+        { error: 'Failed to encrypt credentials. Check ENCRYPTION_KEY.' },
+        { status: 500 }
+      )
+    }
+
     // Build a candidate config to verify credentials and create/connect.
     const candidateConfig = {
       provider: 'evolution',
       evolution_base_url: normalizedBaseUrl,
-      evolution_api_key: api_key, // plaintext for verification; encrypted below
+      evolution_api_key: encryptedApiKey,
       evolution_instance_name: normalizedInstance,
-      evolution_webhook_secret: webhook_secret || '',
-      user_id: user.id,
+      evolution_webhook_secret: encryptedWebhookSecret,
+      user_id: userId,
     } as unknown as WhatsAppConfig
 
     const adapter = new EvolutionAdapter()
     let qr: { base64: string; raw?: string } | null = null
     let status: ConnectionStatus = { connected: false, detail: 'unknown' }
-    let verifyError: string | null = null
 
     try {
       await adapter.verifyConfiguration(candidateConfig)
+
       if (create_instance) {
         const connect = await adapter.createOrConnect(candidateConfig)
         qr = connect.qr ?? null
@@ -190,27 +214,23 @@ export async function POST(request: Request) {
       } else {
         status = await adapter.getConnectionStatus(candidateConfig)
       }
-    } catch (err) {
-      verifyError = err instanceof Error ? err.message : String(err)
-      console.error('[evolution/config POST] verification failed:', verifyError)
-      return NextResponse.json(
-        { error: `Evolution API error: ${verifyError}` },
-        { status: 400 }
-      )
-    }
 
-    // Encrypt secrets before persistence.
-    let encryptedApiKey: string
-    let encryptedWebhookSecret: string | null
-    try {
-      encryptedApiKey = encrypt(api_key)
-      encryptedWebhookSecret = webhook_secret ? encrypt(webhook_secret) : null
+      // Configure the Evolution webhook to point back at this deployment.
+      const webhookUrl = new URL(
+        '/api/whatsapp/evolution/webhook',
+        new URL(request.url).origin,
+      ).toString()
+      await adapter.configureWebhook(candidateConfig, webhookUrl, trimmedWebhookSecret)
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown encryption error'
-      console.error('[evolution/config POST] encryption failed:', message)
+      const message = err instanceof Error ? err.message : String(err)
+      console.error('[evolution/config POST] verification/webhook failed:', message)
+
+      if (err instanceof ProviderError && err.status) {
+        return NextResponse.json({ error: message }, { status: err.status })
+      }
       return NextResponse.json(
-        { error: 'Failed to encrypt credentials. Check ENCRYPTION_KEY.' },
-        { status: 500 }
+        { error: `Evolution API error: ${message}` },
+        { status: 400 }
       )
     }
 
@@ -249,7 +269,7 @@ export async function POST(request: Request) {
         .from('whatsapp_config')
         .insert({
           account_id: accountId,
-          user_id: user.id,
+          user_id: userId,
           ...baseRow,
         })
       if (insertError) {
@@ -264,7 +284,7 @@ export async function POST(request: Request) {
       qr: qr
         ? {
             base64: qr.base64,
-            dataUrl: qr.base64.startsWith('data:') ? qr.base64 : `data:image/png;base64,${qr.base64}`,
+            dataUrl: qr.base64,
           }
         : null,
       instance_name: normalizedInstance,
@@ -277,16 +297,7 @@ export async function POST(request: Request) {
 
 export async function DELETE() {
   try {
-    const supabase = await createClient()
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
-
-    const accountId = await resolveAccountId(supabase, user.id)
-    if (!accountId) {
-      return NextResponse.json({ error: 'Profile not linked to an account.' }, { status: 403 })
-    }
+    const { supabase, accountId } = await requireRole('admin')
 
     const { error } = await supabase
       .from('whatsapp_config')
