@@ -129,8 +129,25 @@ export class EvolutionAdapter implements WhatsAppProvider {
         { method: 'GET' },
       )
 
-      const status = await this.getConnectionStatus(config)
-      const qrCode = this.#extractQrCode(data)
+      let status = await this.getConnectionStatus(config)
+      let qrCode = this.#extractQrCode(data)
+
+      // The QR can take a moment to be generated right after /instance/create.
+      // Retry once before giving up so the user sees the pairing code.
+      if (!qrCode && !status.connected) {
+        await new Promise((resolve) => setTimeout(resolve, 1500))
+        try {
+          const retry = await this.#request(
+            `${baseUrl}/instance/connect/${encodeURIComponent(instanceName)}`,
+            apiKey,
+            { method: 'GET' },
+          )
+          qrCode = this.#extractQrCode(retry)
+        } catch {
+          // keep the original result
+        }
+        status = await this.getConnectionStatus(config)
+      }
 
       if (!qrCode && !status.connected) {
         return {
@@ -399,17 +416,47 @@ export class EvolutionAdapter implements WhatsAppProvider {
 
   #extractQrCode(data: unknown): QrCode | null {
     if (!data || typeof data !== 'object') return null
-    const d = data as Record<string, unknown>
 
-    const code =
-      typeof d.base64 === 'string'
-        ? d.base64
-        : typeof d.qrcode === 'string'
-          ? d.qrcode
-          : typeof d.code === 'string'
-            ? d.code
-            : null
+    // Evolution v2.3.7 returns the QR in several shapes depending on the
+    // endpoint and instance state, e.g.:
+    //   { base64: "..." }
+    //   { qrcode: { base64: "...", code: "..." } }
+    //   { code: "...", base64: "..." }
+    // Search recursively so the pairing QR is found wherever it is nested.
+    const seen = new Set<unknown>()
 
+    const walk = (node: unknown, depth = 0): string | null => {
+      if (!node || typeof node !== 'object' || depth > 6 || seen.has(node)) return null
+      seen.add(node)
+
+      if (Array.isArray(node)) {
+        for (const item of node) {
+          const found = walk(item, depth + 1)
+          if (found) return found
+        }
+        return null
+      }
+
+      const d = node as Record<string, unknown>
+
+      // Prefer the rendered image, then the raw pairing code.
+      for (const key of ['base64', 'qrcodeBase64', 'code', 'qrcode', 'qr']) {
+        const value = d[key]
+        if (typeof value === 'string' && value.length > 0) return value
+      }
+
+      for (const key of ['qrcode', 'qr', 'data', 'instance', 'response', 'result']) {
+        const value = d[key]
+        if (value && typeof value === 'object') {
+          const found = walk(value, depth + 1)
+          if (found) return found
+        }
+      }
+
+      return null
+    }
+
+    const code = walk(data)
     if (!code) return null
 
     const base64 = code.startsWith('data:') ? code : `data:image/png;base64,${code}`
