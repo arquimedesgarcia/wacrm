@@ -83,15 +83,28 @@ export class EvolutionAdapter implements WhatsAppProvider {
     const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
 
     try {
-      // Ensure instance exists with QR enabled.
-      await this.#request(`${baseUrl}/instance/create`, apiKey, {
-        method: 'POST',
-        body: JSON.stringify({
-          instanceName,
-          qrcode: true,
-          // Do not set webhook here; the caller owns webhook configuration.
-        }),
-      })
+      // Only create the instance when it does not exist yet.
+      // POST /instance/create requires the GLOBAL apikey and fails (403/409)
+      // when the instance is already registered, so probe it first.
+      const exists = await this.#instanceExists(baseUrl, apiKey, instanceName)
+
+      if (!exists) {
+        try {
+          await this.#request(`${baseUrl}/instance/create`, apiKey, {
+            method: 'POST',
+            body: JSON.stringify({
+              instanceName,
+              qrcode: true,
+              // Do not set webhook here; the caller owns webhook configuration.
+            }),
+          })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          // Another request may have created it in the meantime; tolerate
+          // "already exists" style errors and continue to the QR step.
+          if (!/already|exists|409/i.test(message)) throw err
+        }
+      }
 
       const { qr, status } = await this.getQrCode(config)
       return { qr, status }
@@ -313,6 +326,24 @@ export class EvolutionAdapter implements WhatsAppProvider {
       apiKey,
       { method: 'GET' },
     ) as Promise<Record<string, unknown>>
+  }
+
+  /**
+   * Returns true when the instance is already registered on the Evolution
+   * server. Uses GET /instance/connectionState, which works with either the
+   * global apikey or the instance token (unlike POST /instance/create).
+   */
+  async #instanceExists(
+    baseUrl: string,
+    apiKey: string,
+    instanceName: string,
+  ): Promise<boolean> {
+    try {
+      await this.#fetchConnectionState(baseUrl, apiKey, instanceName)
+      return true
+    } catch {
+      return false
+    }
   }
 
   async #request(
