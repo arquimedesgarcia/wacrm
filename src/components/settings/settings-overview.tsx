@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { SECTION_META, type SettingsSection } from './settings-sections';
 import { SettingsChip, StatusDot } from './settings-chip';
 import { ROLE_META } from './role-meta';
+import { deriveWhatsappSummary } from '@/lib/settings/whatsapp-summary';
 
 interface OverviewCounts {
   members: number | null;
@@ -120,19 +121,41 @@ export function SettingsOverview({
     // WhatsApp connection status — slower, independent.
     (async () => {
       setWhatsappLoading(true);
-      const [row, health] = await Promise.allSettled([
-        supabase
-          .from('whatsapp_config')
-          .select('phone_number_id')
-          .eq('account_id', acctId)
-          .maybeSingle(),
-        fetch('/api/whatsapp/config', { cache: 'no-store' }).then((r) => r.json()),
-      ]);
+      // Read provider too: Evolution rows always store phone_number_id =
+      // null, so gating "configured" on that column alone marks a valid
+      // Evolution setup as "not setup". Which health endpoint to ping
+      // also depends on the provider (Meta vs Evolution), so the row
+      // must land before the health fetch starts.
+      const { data: row } = await supabase
+        .from('whatsapp_config')
+        .select('provider, phone_number_id, evolution_instance_name, evolution_base_url')
+        .eq('account_id', acctId)
+        .maybeSingle();
       if (cancelled) return;
-      setWhatsapp({
-        configured: row.status === 'fulfilled' && !!row.value.data?.phone_number_id,
-        connected: health.status === 'fulfilled' && !!health.value?.connected,
-      });
+
+      if (!deriveWhatsappSummary(row ?? null, null).configured) {
+        setWhatsapp({ configured: false, connected: false });
+        setWhatsappLoading(false);
+        return;
+      }
+
+      const healthUrl =
+        row?.provider === 'evolution'
+          ? '/api/whatsapp/evolution/config'
+          : '/api/whatsapp/config';
+      try {
+        const res = await fetch(healthUrl, { cache: 'no-store' });
+        const payload = await res.json();
+        if (cancelled) return;
+        setWhatsapp(
+          deriveWhatsappSummary(row ?? null, { connected: !!payload?.connected })
+        );
+      } catch {
+        if (cancelled) return;
+        // A failed health probe means "state unknown", which the tile
+        // renders as "needs reconnecting" — still configured, though.
+        setWhatsapp({ configured: true, connected: false });
+      }
       setWhatsappLoading(false);
     })();
 
