@@ -508,3 +508,106 @@ describe('EvolutionAdapter secret handling', () => {
     })
   })
 })
+
+describe('EvolutionAdapter configureWebhook URL validation', () => {
+  it('rejects a webhook URL prefixed with @url:', async () => {
+    const adapter = new EvolutionAdapter()
+    await expect(
+      adapter.configureWebhook(makeConfig(), '@url:https://wacrm.example.com/webhook', 'secret'),
+    ).rejects.toMatchObject({ code: 'CONFIGURATION_INVALID' })
+  })
+
+  it('rejects a webhook URL containing backticks', async () => {
+    const adapter = new EvolutionAdapter()
+    await expect(
+      adapter.configureWebhook(makeConfig(), '`https://wacrm.example.com/webhook`', 'secret'),
+    ).rejects.toMatchObject({ code: 'CONFIGURATION_INVALID' })
+  })
+})
+
+describe('EvolutionAdapter historical import', () => {
+  it('findContacts paginates through contacts', async () => {
+    setupFetch(
+      jsonResponse({
+        contacts: [
+          { id: 'c1', remoteJid: '15551234567@s.whatsapp.net', pushName: 'Alice' },
+          { id: 'c2', remoteJid: '15559876543@s.whatsapp.net', pushName: 'Bob' },
+        ],
+        total: 2,
+      }),
+    )
+
+    const adapter = new EvolutionAdapter()
+    const contacts = await adapter.findContacts(makeConfig(), { limit: 50, offset: 0 })
+
+    expect(contacts).toHaveLength(2)
+    expect(contacts[0].remoteJid).toBe('15551234567@s.whatsapp.net')
+    expect(contacts[1].pushName).toBe('Bob')
+
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ]
+    expect(url).toBe('https://evolution.example.com/chat/findContacts/waCRM')
+    expect(init.method).toBe('POST')
+    expect(JSON.parse(init.body as string)).toMatchObject({ limit: 50, offset: 0 })
+  })
+
+  it('findMessages filters by remoteJid', async () => {
+    setupFetch(
+      jsonResponse({
+        messages: [
+          {
+            key: { remoteJid: '15551234567@s.whatsapp.net', fromMe: false, id: 'HIST-1' },
+            message: { conversation: 'Old hello' },
+            messageTimestamp: 1700000000,
+          },
+        ],
+      }),
+    )
+
+    const adapter = new EvolutionAdapter()
+    const messages = await adapter.findMessages(makeConfig(), '15551234567@s.whatsapp.net', {
+      limit: 100,
+      offset: 0,
+    })
+
+    expect(messages).toHaveLength(1)
+    expect(messages[0].key?.id).toBe('HIST-1')
+
+    const [url, init] = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+      RequestInit,
+    ]
+    expect(url).toBe('https://evolution.example.com/chat/findMessages/waCRM')
+    const body = JSON.parse(init.body as string)
+    expect(body.where.key.remoteJid).toBe('15551234567@s.whatsapp.net')
+  })
+
+  it('normalizeHistoricalMessage extracts the digit-only phone even for group JIDs', () => {
+    const adapter = new EvolutionAdapter()
+    const event = adapter.normalizeHistoricalMessage({
+      key: { remoteJid: '120363000000000000@g.us', fromMe: false, id: 'G-1' },
+      message: { conversation: 'Group message' },
+      messageTimestamp: 1700000000,
+    })
+
+    // The normalizer is provider-agnostic; group filtering belongs in the
+    // import orchestrator, not here.
+    expect(event).not.toBeNull()
+    expect(event?.senderPhone).toBe('120363000000000000')
+  })
+
+  it('normalizeHistoricalMessage marks own messages as fromMe', () => {
+    const adapter = new EvolutionAdapter()
+    const event = adapter.normalizeHistoricalMessage({
+      key: { remoteJid: '15551234567@s.whatsapp.net', fromMe: true, id: 'OWN-1' },
+      message: { conversation: 'Sent from phone' },
+      messageTimestamp: 1700000000,
+    })
+
+    expect(event).not.toBeNull()
+    expect(event?.isFromMe).toBe(true)
+    expect(event?.contentText).toBe('Sent from phone')
+  })
+})

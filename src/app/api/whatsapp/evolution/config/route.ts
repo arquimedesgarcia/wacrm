@@ -14,7 +14,7 @@
 // provider is an account-level administrative operation.
 // ============================================================
 
-import { NextResponse } from 'next/server'
+import { NextResponse, after } from 'next/server'
 import type { ConnectionStatus } from '@/lib/whatsapp/providers/types'
 import { getCurrentAccount, requireRole } from '@/lib/auth/account'
 import { createClient as createAdminClient } from '@supabase/supabase-js'
@@ -22,6 +22,7 @@ import { encrypt } from '@/lib/whatsapp/encryption'
 import { EvolutionAdapter } from '@/lib/whatsapp/providers/evolution-adapter'
 import { ProviderError } from '@/lib/whatsapp/providers'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
+import { importEvolutionHistory } from '@/lib/whatsapp/evolution-import'
 import type { WhatsAppConfig } from '@/types'
 
 async function resolveAccountId(
@@ -49,7 +50,7 @@ function supabaseAdmin() {
   return _adminClient
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const { supabase, userId } = await getCurrentAccount()
 
@@ -92,12 +93,18 @@ export async function GET() {
       errorMessage = err instanceof Error ? err.message : String(err)
     }
 
+    const webhookUrl = new URL(
+      '/api/whatsapp/evolution/webhook',
+      new URL(request.url).origin,
+    ).toString()
+
     return NextResponse.json({
       connected: status.connected,
       reason: status.connected ? undefined : 'disconnected',
       message: errorMessage || status.detail || 'Instance not connected.',
       instance_name: config.evolution_instance_name,
       base_url: config.evolution_base_url,
+      webhook_url: webhookUrl,
       // Never return secrets.
     })
   } catch (error) {
@@ -251,7 +258,7 @@ export async function POST(request: Request) {
 
     const { data: existing } = await supabase
       .from('whatsapp_config')
-      .select('id')
+      .select('id, evolution_history_imported_at')
       .eq('account_id', accountId)
       .maybeSingle()
 
@@ -278,9 +285,39 @@ export async function POST(request: Request) {
       }
     }
 
+    // Trigger a one-time historical import the first time the instance
+    // becomes connected. The import runs in the background so saving stays
+    // fast and cannot timeout.
+    const shouldImportHistory =
+      status.connected &&
+      !existing?.evolution_history_imported_at &&
+      baseRow.status === 'connected'
+
+    if (shouldImportHistory) {
+      after(async () => {
+        try {
+          const result = await importEvolutionHistory({
+            db: supabaseAdmin(),
+            accountId,
+            ownerUserId: userId,
+            config: {
+              ...candidateConfig,
+              id: existing?.id ?? '',
+              user_id: userId,
+              status: 'connected',
+            } as WhatsAppConfig,
+          })
+          console.log('[evolution/config POST] history import completed:', result)
+        } catch (error) {
+          console.error('[evolution/config POST] history import failed:', error)
+        }
+      })
+    }
+
     return NextResponse.json({
       success: true,
       connected: status.connected,
+      history_import_started: shouldImportHistory,
       qr: qr
         ? {
             base64: qr.base64,

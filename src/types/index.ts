@@ -310,6 +310,12 @@ export interface WhatsAppConfig {
   evolution_instance_id?: string | null;
   /** Encrypted secret Evolution sends in webhook headers. Migration 040. */
   evolution_webhook_secret?: string | null;
+  /**
+   * Timestamp of the last successful historical import of Evolution
+   * contacts/messages. NULL means the import has never run.
+   * Migration 041.
+   */
+  evolution_history_imported_at?: string | null;
 }
 
 // Raw Meta status enum. We persist this verbatim from Meta (sync + webhook)

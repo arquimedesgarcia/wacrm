@@ -163,10 +163,16 @@ export function WhatsAppConfig() {
       // Clear any stale probe result when reloading the row.
       setRegistrationProbe(null);
 
-      // Then verify health via the API (decrypts token + pings Meta)
+      // Then verify health via the API for the active provider.
+      // Evolution rows have no Meta token, so calling /api/whatsapp/config
+      // there always fails; route to the Evolution health endpoint instead.
       if (data) {
         try {
-          const res = await fetch('/api/whatsapp/config', { method: 'GET' });
+          const isEvolution = data.provider === 'evolution';
+          const healthUrl = isEvolution
+            ? '/api/whatsapp/evolution/config'
+            : '/api/whatsapp/config';
+          const res = await fetch(healthUrl, { method: 'GET' });
           const payload = await res.json();
 
           if (payload.connected) {
@@ -175,7 +181,14 @@ export function WhatsAppConfig() {
             setStatusMessage('');
           } else {
             setConnectionStatus('disconnected');
-            setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
+            // The Evolution endpoint does not emit the Meta-specific reset
+            // reasons; keep them scoped to Meta so the UI does not show a
+            // corrupted-token banner for an Evolution connection error.
+            if (isEvolution) {
+              setResetReason(null);
+            } else {
+              setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
+            }
             setStatusMessage(payload.message || '');
           }
         } catch (err) {

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Copy, RotateCcw, AlertTriangle, Info } from 'lucide-react';
+import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Copy, RotateCcw, AlertTriangle, Info, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -44,6 +44,8 @@ export function EvolutionConfigPanel({
   const [createInstance, setCreateInstance] = useState(true);
 
   const [qrCode, setQrCode] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
 
   const webhookUrl =
     typeof window !== 'undefined'
@@ -113,6 +115,11 @@ export function EvolutionConfigPanel({
         toast.success('Configuration saved, but instance is not connected yet.');
       }
 
+      if (data.history_import_started) {
+        setImportMessage('Historical import started in the background. Contacts and messages will appear shortly.');
+        toast.info('Historical import started in the background.');
+      }
+
       setConnectionStatus(data.connected ? 'connected' : 'disconnected');
       setStatusMessage(data.connected ? '' : data.message || 'Instance not connected.');
 
@@ -166,6 +173,29 @@ export function EvolutionConfigPanel({
       toast.error('Connection test failed.');
     } finally {
       setTesting(false);
+    }
+  }
+
+  async function handleImportHistory() {
+    if (!config || connectionStatus !== 'connected') return;
+    setImporting(true);
+    setImportMessage(null);
+    try {
+      const res = await fetch('/api/whatsapp/evolution/import', { method: 'POST' });
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.error || 'Failed to start historical import');
+        return;
+      }
+
+      setImportMessage('Historical import started in the background. Contacts and messages will appear shortly.');
+      toast.info('Historical import started in the background.');
+    } catch (err) {
+      console.error('Import history error:', err);
+      toast.error('Failed to start historical import');
+    } finally {
+      setImporting(false);
     }
   }
 
@@ -430,6 +460,26 @@ export function EvolutionConfigPanel({
             </>
           )}
         </Button>
+        {config && connectionStatus === 'connected' && (
+          <Button
+            variant="outline"
+            onClick={handleImportHistory}
+            disabled={importing}
+            className="border-border text-muted-foreground hover:text-foreground hover:bg-muted"
+          >
+            {importing ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                Importing…
+              </>
+            ) : (
+              <>
+                <History className="size-4" />
+                Import history
+              </>
+            )}
+          </Button>
+        )}
         {config && (
           <Button
             variant="outline"
@@ -451,6 +501,12 @@ export function EvolutionConfigPanel({
           </Button>
         )}
       </div>
+
+      {importMessage && (
+        <div className="rounded-md border border-blue-700/50 bg-blue-950/30 px-4 py-3 text-sm text-blue-100/80">
+          {importMessage}
+        </div>
+      )}
     </div>
   );
 }

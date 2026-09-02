@@ -41,6 +41,25 @@ const REQUEST_TIMEOUT_MS = 10_000
 const GET_RETRY_DELAY_MS = 500
 const GET_MAX_ATTEMPTS = 2
 
+export interface EvolutionContact {
+  id: string
+  remoteJid: string
+  pushName?: string | null
+  profilePictureUrl?: string | null
+}
+
+export interface EvolutionMessage {
+  key?: {
+    id?: string
+    remoteJid?: string
+    fromMe?: boolean
+  }
+  pushName?: string
+  message?: Record<string, unknown>
+  messageType?: string
+  messageTimestamp?: number | string
+}
+
 export class EvolutionAdapter implements WhatsAppProvider {
   readonly kind = 'evolution' as const
 
@@ -275,6 +294,31 @@ export class EvolutionAdapter implements WhatsAppProvider {
   ): Promise<void> {
     const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
 
+    // Defensive validation: the URL must be plain and parseable. This catches
+    // accidental template literals like `@url:...` or backticks that could be
+    // injected by a misconfigured proxy or environment variable.
+    let parsedUrl: URL
+    try {
+      parsedUrl = new URL(webhookUrl)
+    } catch {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        `Webhook URL is not a valid URL: ${webhookUrl}`,
+        { provider: 'evolution' },
+      )
+    }
+
+    if (!/^https?:$/i.test(parsedUrl.protocol)) {
+      throw new ProviderError(
+        'CONFIGURATION_INVALID',
+        `Webhook URL must use http or https: ${webhookUrl}`,
+        { provider: 'evolution' },
+      )
+    }
+
+    // Audit log so operators can verify the exact URL sent to Evolution.
+    console.log('[evolution] configuring webhook URL:', parsedUrl.toString())
+
     await this.#request(
       `${baseUrl}/webhook/set/${encodeURIComponent(instanceName)}`,
       apiKey,
@@ -283,7 +327,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
         body: JSON.stringify({
           webhook: {
             enabled: true,
-            url: webhookUrl,
+            url: parsedUrl.toString(),
             byEvents: false,
             base64: false,
             headers: { apikey: webhookSecret },
@@ -298,6 +342,152 @@ export class EvolutionAdapter implements WhatsAppProvider {
       },
       { allowRetry: false },
     )
+  }
+
+  /**
+   * Fetch contacts stored on the Evolution instance.
+   *
+   * Uses POST /chat/findContacts/{instanceName}. The endpoint returns both
+   * saved contacts and users the instance has chatted with.
+   */
+  async findContacts(
+    config: WhatsAppConfig,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<EvolutionContact[]> {
+    const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
+    const { limit = 100, offset = 0 } = options
+
+    const data = (await this.#request(
+      `${baseUrl}/chat/findContacts/${encodeURIComponent(instanceName)}`,
+      apiKey,
+      {
+        method: 'POST',
+        body: JSON.stringify({ limit, offset }),
+      },
+      { allowRetry: true },
+    )) as Record<string, unknown>
+
+    const contacts = Array.isArray(data.contacts)
+      ? data.contacts
+      : Array.isArray(data)
+        ? data
+        : []
+
+    return contacts
+      .map((item) => {
+        const c = item as Record<string, unknown>
+        return {
+          id: String(c.id ?? ''),
+          remoteJid: String(c.remoteJid ?? ''),
+          pushName: c.pushName as string | null | undefined,
+          profilePictureUrl: c.profilePictureUrl as string | null | undefined,
+        }
+      })
+      .filter((c) => c.remoteJid && c.remoteJid.trim() !== '')
+  }
+
+  /**
+   * Fetch historical messages for a single remote JID.
+   *
+   * Uses POST /chat/findMessages/{instanceName}. The `where.key.remoteJid`
+   * filter is requested but Evolution versions may ignore it; callers should
+   * discard messages whose `key.remoteJid` does not match.
+   */
+  async findMessages(
+    config: WhatsAppConfig,
+    remoteJid: string,
+    options: { limit?: number; offset?: number } = {},
+  ): Promise<EvolutionMessage[]> {
+    const { baseUrl, apiKey, instanceName } = this.#requireConfig(config)
+    const { limit = 100, offset = 0 } = options
+
+    const data = (await this.#request(
+      `${baseUrl}/chat/findMessages/${encodeURIComponent(instanceName)}`,
+      apiKey,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          where: { key: { remoteJid } },
+          limit,
+          offset,
+        }),
+      },
+      { allowRetry: true },
+    )) as Record<string, unknown>
+
+    if (Array.isArray(data)) return data as EvolutionMessage[]
+    if (Array.isArray(data.messages)) return data.messages as EvolutionMessage[]
+    if (Array.isArray(data.data)) return data.data as EvolutionMessage[]
+    return []
+  }
+
+  /**
+   * Normalize a single historical message returned by /chat/findMessages
+   * into the same shape used by inbound webhook events.
+   *
+   * Returns null when the message has no usable sender phone (e.g. groups
+   * or malformed payloads).
+   */
+  normalizeHistoricalMessage(
+    msg: unknown,
+    providerInstanceId?: string,
+  ): NormalizedInboundEvent | null {
+    if (!msg || typeof msg !== 'object') return null
+    const m = msg as Record<string, unknown>
+
+    const key = (m.key ?? {}) as Record<string, unknown>
+    const messageContent = (m.message ?? {}) as Record<string, unknown>
+    const pushName = normalizeDisplayName(String(m.pushName ?? ''))
+
+    const fromJid = String(key.remoteJid ?? '')
+    const fromPhone = normalizeInboundPhone(fromJid)
+    if (!fromPhone) return null
+
+    const providerMessageId = String(key.id ?? `evolution-${Date.now()}`)
+    const isFromMe = key.fromMe === true
+    const timestamp = normalizeTimestamp(
+      (m.messageTimestamp as string | number | undefined) ??
+        (messageContent.messageTimestamp as string | number | undefined),
+    )
+
+    const conversationContent = (
+      messageContent.conversation ?? {}
+    ) as Record<string, unknown>
+    const text =
+      typeof conversationContent === 'string'
+        ? conversationContent
+        : String(conversationContent.text ?? messageContent.text ?? '')
+
+    const type = normalizeContentType(
+      messageContent.imageMessage || messageContent.stickerMessage
+        ? 'image'
+        : messageContent.videoMessage
+          ? 'video'
+          : messageContent.audioMessage
+            ? 'audio'
+            : messageContent.documentMessage
+              ? 'document'
+              : messageContent.locationMessage
+                ? 'location'
+                : 'text',
+    )
+
+    return {
+      provider: 'evolution',
+      providerInstanceId: providerInstanceId ?? 'unknown',
+      providerMessageId,
+      senderPhone: fromPhone,
+      displayName: pushName,
+      timestamp,
+      isFromMe,
+      contentType: type,
+      contentText: text || null,
+      mediaUrl: null,
+      mediaType: null,
+      replyToProviderMessageId: null,
+      interactiveReplyId: null,
+      rawPayload: m,
+    }
   }
 
   /**
@@ -724,71 +914,13 @@ export class EvolutionAdapter implements WhatsAppProvider {
 
     const d = data as Record<string, unknown>
     const messages = Array.isArray(d.messages) ? d.messages : [d]
+    const providerInstanceId = this.#providerInstanceId(payload)
 
     const events: NormalizedWebhookEvent[] = []
-
     for (const msg of messages) {
-      if (!msg || typeof msg !== 'object') continue
-      const m = msg as Record<string, unknown>
-
-      const key = (m.key ?? {}) as Record<string, unknown>
-      const messageContent = (m.message ?? {}) as Record<string, unknown>
-      const pushName = normalizeDisplayName(String(m.pushName ?? ''))
-
-      const fromJid = String(key.remoteJid ?? '')
-      const fromPhone = normalizeInboundPhone(fromJid)
-      if (!fromPhone) continue
-
-      const providerInstanceId = this.#providerInstanceId(payload)
-      const providerMessageId = String(key.id ?? `evolution-${Date.now()}`)
-      const isFromMe = key.fromMe === true
-      const timestamp = normalizeTimestamp(
-        (m.messageTimestamp as string | number | undefined) ??
-          (messageContent.messageTimestamp as string | number | undefined),
-      )
-
-      const conversationContent = (
-        messageContent.conversation ?? {}
-      ) as Record<string, unknown>
-      const text =
-        typeof conversationContent === 'string'
-          ? conversationContent
-          : String(conversationContent.text ?? messageContent.text ?? '')
-
-      const type = normalizeContentType(
-        messageContent.imageMessage || messageContent.stickerMessage
-          ? 'image'
-          : messageContent.videoMessage
-            ? 'video'
-            : messageContent.audioMessage
-              ? 'audio'
-              : messageContent.documentMessage
-                ? 'document'
-                : messageContent.locationMessage
-                  ? 'location'
-                  : 'text',
-      )
-
-      const event: NormalizedInboundEvent = {
-        provider: 'evolution',
-        providerInstanceId,
-        providerMessageId,
-        senderPhone: fromPhone,
-        displayName: pushName,
-        timestamp,
-        isFromMe,
-        contentType: type,
-        contentText: text || null,
-        mediaUrl: null,
-        mediaType: null,
-        replyToProviderMessageId: null,
-        interactiveReplyId: null,
-        rawPayload: m,
-      }
-
-      events.push(event)
+      const event = this.normalizeHistoricalMessage(msg, providerInstanceId)
+      if (event) events.push(event)
     }
-
     return events
   }
 
