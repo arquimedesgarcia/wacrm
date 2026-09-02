@@ -508,6 +508,16 @@ export function WhatsAppConfig() {
         {provider === 'evolution' ? (
           <EvolutionConfigPanel
             initialConfig={config?.provider === 'evolution' ? config : null}
+            // Live health result from fetchConfig, scoped to Evolution
+            // rows only: when the stored row is Meta (or missing) the
+            // container's connectionStatus reflects the Meta probe and
+            // must not leak into the Evolution panel as a false positive.
+            liveStatus={
+              config?.provider === 'evolution' ? connectionStatus : 'unknown'
+            }
+            liveStatusMessage={
+              config?.provider === 'evolution' ? statusMessage : ''
+            }
             onConfigChange={(next) => {
               setConfig(next);
               setConnectionStatus(next?.status === 'connected' ? 'connected' : 'disconnected');

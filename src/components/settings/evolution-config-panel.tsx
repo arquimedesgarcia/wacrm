@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Copy, RotateCcw, AlertTriangle, Info, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -18,11 +18,23 @@ type ConnectionStatus = 'connected' | 'disconnected' | 'unknown';
 interface EvolutionConfigPanelProps {
   initialConfig: WhatsAppConfigType | null;
   onConfigChange?: (config: WhatsAppConfigType | null) => void;
+  /**
+   * Live connection state obtained by the parent from
+   * GET /api/whatsapp/evolution/config. The stored `status` column can
+   * lag behind the real instance state (webhook sync is asynchronous),
+   * so the panel adopts this value whenever it is provided. 'unknown'
+   * (or absent) means "no live probe yet" and must NOT be rendered as
+   * connected.
+   */
+  liveStatus?: ConnectionStatus;
+  liveStatusMessage?: string;
 }
 
 export function EvolutionConfigPanel({
   initialConfig,
   onConfigChange,
+  liveStatus,
+  liveStatusMessage,
 }: EvolutionConfigPanelProps) {
   const [config, setConfig] = useState<WhatsAppConfigType | null>(initialConfig);
   const [saving, setSaving] = useState(false);
@@ -46,6 +58,16 @@ export function EvolutionConfigPanel({
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
+
+  // Adopt the parent's live health result when it arrives. The equality
+  // guard keeps React from re-rendering when nothing changed, and the
+  // 'unknown' skip ensures a missing probe is never displayed as a
+  // definitive state. Presentation state only — form inputs are untouched.
+  useEffect(() => {
+    if (!liveStatus || liveStatus === 'unknown') return;
+    setConnectionStatus((prev) => (prev === liveStatus ? prev : liveStatus));
+    setStatusMessage(liveStatusMessage ?? '');
+  }, [liveStatus, liveStatusMessage]);
 
   const webhookUrl =
     typeof window !== 'undefined'
