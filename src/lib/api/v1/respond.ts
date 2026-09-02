@@ -131,3 +131,46 @@ export function toApiErrorResponse(err: unknown): NextResponse {
     { status: 500 }
   );
 }
+
+/**
+ * Build a failure envelope from a stable wire `code`. The user-facing
+ * copy is the client's responsibility (see `useApiError` /
+ * `getApiErrorMessage`): the server only ships the code, plus an
+ * optional `params` object that the client may interpolate into the
+ * matching `Errors.apiErrors.<code>` translation.
+ *
+ * `message` is still attached for backward compatibility with the
+ * existing public API contract — the public `/api/v1` integrators
+ * may parse it. Dashboard code must NOT render it; translate by
+ * `code` instead.
+ */
+export function errorCode(
+  code: string,
+  status: number,
+  options: {
+    message?: string;
+    params?: Record<string, string | number>;
+    headers?: Record<string, string>;
+  } = {}
+): NextResponse {
+  const { message, params, headers } = options;
+  return NextResponse.json(
+    {
+      error: {
+        code,
+        ...(message !== undefined ? { message } : {}),
+        ...(params !== undefined ? { params } : {}),
+      },
+    },
+    { status, headers }
+  );
+}
+
+/** Convenience wrapper: build a `NextResponse` for a known code. */
+export function knownError(
+  code: Parameters<typeof errorCode>[0],
+  status: number,
+  options?: Parameters<typeof errorCode>[2]
+): NextResponse {
+  return errorCode(code, status, options);
+}

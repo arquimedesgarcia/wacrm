@@ -235,6 +235,15 @@ This project handles real customer conversations and WhatsApp credentials. Treat
 - **Automations/Flows cron**: External scheduler must hit `GET /api/automations/cron` and `GET /api/flows/cron` with the `x-cron-secret` header. Both return 503 until `AUTOMATION_CRON_SECRET` is set.
 - **Public API**: Envelope responses (`{ data }` / `{ error: { code, message } }`). Pagination uses opaque keyset cursors.
 
+## Internationalization (i18n)
+
+The fork localizes UI copy and user-facing error messages through `next-intl`, with `en` as the source of truth and `es`/`ko` translations living in `messages/{en,es,ko}.json`. The `src/features/i18n/` module owns locale resolution, storage, and the API-error catalogue.
+
+- **Error codes, not messages, travel on the wire.** API responses use `{ error: { code, message?, params? } }`. Server routes and helpers emit `respond.errorCode(code, status, { params })` from `src/lib/api/v1/respond.ts`. The `code` maps to a key in `Errors.apiErrors.<code>` (see `src/features/i18n/api-errors.ts`).
+- **Client code never renders `error.message` directly.** Dashboards, toasts, and inline alerts translate the wire `code` with `useApiError()` (client) or `getApiErrorMessage()` (server). Unknown codes fall back to `Common.unknownError`.
+- **Translation parity is enforced by tests.** `src/i18n/messages.test.ts` requires every key in `en.json` to be present in `es.json` and `ko.json`. `src/features/i18n/api-errors.test.ts` guards the catalogue. Both must stay green in every PR that adds or removes a key.
+- **`shadcn/ui` strings are not translated** (`src/components/ui/**`) to keep parity with upstream merges. Prompt strings for AI in `src/lib/ai/**` are also not translated.
+
 ## Deployment
 
 Recommended path is Hostinger managed Node.js (one-click Git deploy). The repo also supports Docker:
