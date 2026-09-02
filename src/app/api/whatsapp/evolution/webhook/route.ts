@@ -159,11 +159,59 @@ function authenticateWebhook(
 // Webhook processing pipeline
 // ============================================================
 
+/**
+ * Extract the connection state from a raw Evolution CONNECTION_UPDATE
+ * payload. Evolution v2.3.7 sends the state under `data.state`.
+ */
+function extractConnectionState(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') return null
+  const p = payload as Record<string, unknown>
+  const event = String(p.event ?? '').toLowerCase()
+  if (event !== 'connection.update' && event !== 'connection_update') return null
+
+  const data = p.data
+  if (!data || typeof data !== 'object') return null
+  const state = String((data as Record<string, unknown>).state ?? '').toLowerCase()
+  return state || null
+}
+
+/**
+ * Keep whatsapp_config.status in sync with the actual Evolution instance
+ * state. This is the source of truth for the inbox "WhatsApp not connected"
+ * banner and other UI indicators.
+ */
+async function updateConnectionStatus(accountId: string, payload: unknown) {
+  const state = extractConnectionState(payload)
+  if (!state) return
+
+  const isConnected = state === 'open'
+  const status = isConnected ? 'connected' : 'disconnected'
+
+  try {
+    await supabaseAdmin()
+      .from('whatsapp_config')
+      .update({
+        status,
+        connected_at: isConnected ? new Date().toISOString() : undefined,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('account_id', accountId)
+      .eq('provider', 'evolution')
+  } catch (err) {
+    console.error('[evolution webhook] failed to update connection status:', err)
+  }
+}
+
 async function processEvolutionWebhook(
   payload: unknown,
   accountId: string,
   configOwnerUserId: string,
 ) {
+  // Sync the persisted config status before normalization so the inbox
+  // banner reflects the real Evolution state even if the user has not
+  // reloaded the page.
+  await updateConnectionStatus(accountId, payload)
+
   const adapter = new EvolutionAdapter()
   const events = adapter.normalizeInbound(payload)
 

@@ -172,23 +172,22 @@ function InboxPageInner() {
     }
   }, []);
 
-  // Check WhatsApp connection status on mount
+  // Check WhatsApp connection status on mount, keep it in sync via
+  // realtime updates, and re-check when the tab regains focus so the
+  // banner reflects the actual provider state (especially important for
+  // Evolution, whose connection state is pushed by the webhook).
   useEffect(() => {
+    const supabase = createClient();
+    let realtimeChannel: ReturnType<typeof supabase.channel> | null = null;
+
     const checkConnection = async () => {
-      const supabase = createClient();
       const {
         data: { session },
       } = await supabase.auth.getSession();
       const user = session?.user;
 
-      if (!user) return;
+      if (!user) return null;
 
-      // whatsapp_config is one-row-per-account post-multi-user, so
-      // the previous `.eq('user_id', user.id)` would miss the row
-      // for any teammate who didn't personally save the config —
-      // the "WhatsApp not connected" banner would show in the
-      // shared inbox even though the admin had it configured.
-      // Resolve account_id via the profile and query by that.
       const { data: profile } = await supabase
         .from("profiles")
         .select("account_id")
@@ -197,7 +196,7 @@ function InboxPageInner() {
       const accountId = profile?.account_id as string | undefined;
       if (!accountId) {
         setWhatsappConnected(false);
-        return;
+        return null;
       }
 
       const { data } = await supabase
@@ -207,9 +206,48 @@ function InboxPageInner() {
         .maybeSingle();
 
       setWhatsappConnected(data?.status === "connected");
+      return accountId;
     };
 
-    checkConnection();
+    const setup = async () => {
+      const accountId = await checkConnection();
+      if (!accountId) return;
+
+      // Subscribe to updates on this account's whatsapp_config row so
+      // the banner reacts when the Evolution webhook flips status.
+      realtimeChannel = supabase
+        .channel("whatsapp_config_status")
+        .on(
+          "postgres_changes",
+          {
+            event: "UPDATE",
+            schema: "public",
+            table: "whatsapp_config",
+            filter: `account_id=eq.${accountId}`,
+          },
+          (payload) => {
+            const newStatus = (payload.new as { status?: string }).status;
+            setWhatsappConnected(newStatus === "connected");
+          }
+        )
+        .subscribe();
+    };
+
+    setup();
+
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") {
+        checkConnection();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibility);
+      if (realtimeChannel) {
+        supabase.removeChannel(realtimeChannel);
+      }
+    };
   }, []);
 
   // Handle realtime message events
