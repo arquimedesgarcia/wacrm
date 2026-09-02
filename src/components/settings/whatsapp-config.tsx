@@ -17,6 +17,7 @@ import {
 import { createClient } from '@/lib/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useTranslations } from 'next-intl';
+import { useApiError } from '@/features/i18n/use-api-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -40,6 +41,7 @@ type ResetReason = 'token_corrupted' | 'meta_api_error' | null;
 
 export function WhatsAppConfig() {
   const t = useTranslations('Settings.whatsapp');
+  const tError = useApiError();
   const supabase = createClient();
   // After multi-user, whatsapp_config is one-row-per-account, not
   // one-row-per-user. We pull `accountId` straight off the auth
@@ -189,7 +191,11 @@ export function WhatsAppConfig() {
             } else {
               setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
             }
-            setStatusMessage(payload.message || '');
+            setStatusMessage(
+              payload.error?.code
+                ? tError(payload.error.code, payload.error.params)
+                : payload.message || ''
+            );
           }
         } catch (err) {
           console.error('Health check failed:', err);
@@ -202,7 +208,7 @@ export function WhatsAppConfig() {
       }
     } catch (err) {
       console.error('fetchConfig error:', err);
-      toast.error('Failed to load WhatsApp configuration');
+      toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -250,11 +256,11 @@ export function WhatsAppConfig() {
 
   async function handleSave() {
     if (!phoneNumberId.trim()) {
-      toast.error('Phone Number ID is required');
+      toast.error(t('phoneNumberIdRequired'));
       return;
     }
     if (!config && (!accessToken.trim() || !tokenEdited)) {
-      toast.error('Access Token is required for initial setup');
+      toast.error(t('accessTokenRequired'));
       return;
     }
 
@@ -282,7 +288,7 @@ export function WhatsAppConfig() {
         // server. But our POST handler requires an access_token to verify
         // with Meta. If the user didn't change the token, we need to signal
         // that. Simplest: require token re-entry if they're updating.
-        toast.error('Please re-enter the Access Token to save changes');
+        toast.error(t('accessTokenReenter'));
         setSaving(false);
         return;
       }
@@ -296,7 +302,13 @@ export function WhatsAppConfig() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to save configuration');
+        const code = (data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object' && 'code' in data.error && typeof data.error.code === 'string')
+          ? data.error.code
+          : null;
+        const params = (data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object' && 'params' in data.error && data.error.params && typeof data.error.params === 'object')
+          ? data.error.params as Record<string, string | number>
+          : undefined;
+        toast.error(code ? tError(code, params) : t('saveFailed'));
         setSaving(false);
         return;
       }
@@ -309,7 +321,7 @@ export function WhatsAppConfig() {
       //                         is human-readable from Meta.
       if (data.registered === false && data.registration_error) {
         toast.error(
-          `Saved, but Meta couldn't register the number: ${data.registration_error}`,
+          t('saveRegistrationFailed', { message: data.registration_error }),
           { duration: 12000 },
         );
       } else if (data.registration_skipped) {
@@ -317,16 +329,13 @@ export function WhatsAppConfig() {
         // because no PIN was supplied (e.g. a Meta test number).
         // Don't claim the number is "Live" — point at the
         // Registration status banner instead.
-        toast.success(
-          'Credentials saved and verified. Inbound registration was skipped (no PIN) — see Registration status below.',
-          { duration: 10000 },
-        );
+        toast.success(t('saveVerified'), { duration: 10000 });
         setPin('');
       } else {
         toast.success(
           data.phone_info?.verified_name
-            ? `Live — ${data.phone_info.verified_name} can now receive events.`
-            : 'WhatsApp connected. Events will start flowing within a minute.',
+            ? t('saveLiveNamed', { name: data.phone_info.verified_name })
+            : t('saveLive'),
         );
         // Clear the PIN so subsequent saves don't accidentally
         // re-register (which would void the active subscription if
@@ -337,7 +346,7 @@ export function WhatsAppConfig() {
       if (accountId) await fetchConfig(accountId);
     } catch (err) {
       console.error('Save error:', err);
-      toast.error('Failed to save configuration');
+      toast.error(t('saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -355,19 +364,23 @@ export function WhatsAppConfig() {
         setStatusMessage('');
         toast.success(
           payload.phone_info?.verified_name
-            ? `Connected to ${payload.phone_info.verified_name}`
-            : 'API connection successful'
+            ? t('testConnectionSuccessNamed', { name: payload.phone_info.verified_name })
+            : t('testConnectionSuccess')
         );
       } else {
         setConnectionStatus('disconnected');
         setResetReason(payload.needs_reset ? 'token_corrupted' : payload.reason === 'meta_api_error' ? 'meta_api_error' : null);
         setStatusMessage(payload.message || '');
-        toast.error(payload.message || 'API connection failed');
+        toast.error(
+          payload.error?.code
+            ? tError(payload.error.code, payload.error.params)
+            : payload.message || tError('meta_api_error')
+        );
       }
     } catch (err) {
       console.error('Test connection error:', err);
       setConnectionStatus('disconnected');
-      toast.error('Connection test failed. Check network and try again.');
+      toast.error(t('testConnectionFailedNetwork'));
     } finally {
       setTesting(false);
     }
@@ -383,24 +396,21 @@ export function WhatsAppConfig() {
       const data = (await res.json()) as RegistrationProbe;
       setRegistrationProbe(data);
       if (data.live) {
-        toast.success('Number is fully wired — Meta is delivering events.');
+        toast.success(t('verifyRegistrationSuccess'));
       } else {
-        toast.error(
-          'Number is not fully registered. See the checks below for which step failed.',
-          { duration: 8000 },
-        );
+        toast.error(t('verifyRegistrationFailed'), { duration: 8000 });
       }
       if (accountId) await fetchConfig(accountId);
     } catch (err) {
       console.error('verify-registration failed:', err);
-      toast.error('Could not reach the verification endpoint.');
+      toast.error(t('verifyRegistrationUnreachable'));
     } finally {
       setVerifyingRegistration(false);
     }
   }
 
   async function handleReset() {
-    if (!confirm('This will delete the current WhatsApp config so you can re-enter it. Continue?')) {
+    if (!confirm(t('resetConfirm'))) {
       return;
     }
 
@@ -410,11 +420,14 @@ export function WhatsAppConfig() {
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to reset configuration');
+        const code = (data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object' && 'code' in data.error && typeof data.error.code === 'string')
+          ? data.error.code
+          : null;
+        toast.error(code ? tError(code) : t('resetFailed'));
         return;
       }
 
-      toast.success('Configuration cleared. You can now re-enter your credentials.');
+      toast.success(t('resetSuccess'));
       setConfig(null);
       setPhoneNumberId('');
       setWabaId('');
@@ -427,7 +440,7 @@ export function WhatsAppConfig() {
       setStatusMessage('');
     } catch (err) {
       console.error('Reset error:', err);
-      toast.error('Failed to reset configuration');
+      toast.error(t('resetFailed'));
     } finally {
       setResetting(false);
     }
@@ -435,7 +448,7 @@ export function WhatsAppConfig() {
 
   function handleCopyWebhookUrl() {
     navigator.clipboard.writeText(webhookUrl);
-    toast.success('Webhook URL copied to clipboard');
+    toast.success(t('copyWebhookSuccess'));
   }
 
   if (loading) {
@@ -466,9 +479,9 @@ export function WhatsAppConfig() {
         {/* Provider selector */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">WhatsApp Provider</CardTitle>
+            <CardTitle className="text-foreground">{t('providerCardTitle')}</CardTitle>
             <CardDescription className="text-muted-foreground">
-              Choose the WhatsApp connection method for this account.
+              {t('providerCardDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -482,7 +495,7 @@ export function WhatsAppConfig() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Meta Cloud API
+                {t('providerMeta')}
               </button>
               <button
                 type="button"
@@ -493,13 +506,12 @@ export function WhatsAppConfig() {
                     : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                Evolution API
+                {t('providerEvolution')}
               </button>
             </div>
             {provider === 'evolution' && (
               <p className="mt-3 text-xs text-amber-600 dark:text-amber-500">
-                Evolution API uses WhatsApp Web / Baileys and is intended for testing.
-                It does not support templates or interactive messages.
+                {t('providerEvolutionNotice')}
               </p>
             )}
           </CardContent>

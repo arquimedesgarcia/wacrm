@@ -1536,8 +1536,102 @@
       "step4_3": "Pega la <strong class=\"text-foreground\">Webhook Callback URL</strong> de arriba",
       "step4_4": "Ingresa el mismo <strong class=\"text-foreground\">Verify Token</strong> que configuraste aquí",
       "step4_5": "Suscríbete al campo de webhook \"messages\"",
-      "metaDocs": "Documentación de la API de Meta WhatsApp"
+      "metaDocs": "Documentación de la API de Meta WhatsApp",
+
+      "providerCardTitle": "Proveedor de WhatsApp",
+      "providerCardDesc": "Elige el método de conexión de WhatsApp para esta cuenta.",
+      "providerMeta": "Meta Cloud API",
+      "providerEvolution": "Evolution API",
+      "providerEvolutionNotice": "Evolution API usa WhatsApp Web / Baileys y está pensado para pruebas. No admite plantillas ni mensajes interactivos.",
+
+      "loadFailed": "No se pudo cargar la configuración de WhatsApp",
+      "saveFailed": "No se pudo guardar la configuración",
+      "resetFailed": "No se pudo restablecer la configuración",
+      "resetConfirm": "Esto eliminará la configuración actual de WhatsApp para que puedas volver a ingresarla. ¿Continuar?",
+      "resetSuccess": "Configuración borrada. Ya puedes volver a ingresar tus credenciales.",
+
+      "phoneNumberIdRequired": "El ID del número de teléfono es obligatorio",
+      "accessTokenRequired": "El token de acceso es obligatorio para la configuración inicial",
+      "accessTokenReenter": "Vuelve a ingresar el token de acceso para guardar los cambios",
+
+      "saveVerified": "Credenciales guardadas y verificadas. Se omitió el registro de entrada (sin PIN); consulta el estado de Registro abajo.",
+      "saveLive": "WhatsApp conectado. Los eventos comenzarán a llegar en menos de un minuto.",
+      "saveLiveNamed": "Activo — {name} ya puede recibir eventos.",
+      "saveRegistrationFailed": "Guardado, pero Meta no pudo registrar el número: {message}",
+
+      "testConnectionSuccess": "Conexión con la API correcta",
+      "testConnectionSuccessNamed": "Conectado a {name}",
+      "testConnectionFailedNetwork": "Falló la prueba de conexión. Verifica la red e inténtalo de nuevo.",
+
+      "verifyRegistrationSuccess": "El número está completamente conectado — Meta entrega los eventos.",
+      "verifyRegistrationFailed": "El número no está completamente registrado. Revisa abajo qué paso falló.",
+      "verifyRegistrationUnreachable": "No se pudo contactar con el endpoint de verificación.",
+
+      "copyWebhookSuccess": "URL del webhook copiada al portapapeles"
     },
+    "evolution": {
+      "experimentalTitle": "Proveedor experimental",
+      "experimentalDesc": "Evolution API con Baileys / WhatsApp Web está pensado para desarrollo y pruebas. No equivale a la API oficial de WhatsApp Cloud y puede sufrir desconexiones o restricciones.",
+      "noticeTitle": "Aviso sobre Evolution API",
+      "noticeDesc": "Evolution API está bajo licencia Apache 2.0 con condiciones adicionales de marca y atribución. Se requiere un aviso visible de uso. Para redistribución comercial, revisa la licencia de Evolution API y considera una licencia comercial si no se pueden cumplir las condiciones del aviso.",
+
+      "statusConnected": "Conectado",
+      "statusNotConnected": "No conectado",
+      "statusConnectedDesc": "La instancia de Evolution está conectada.",
+      "statusNotConnectedDesc": "Configura y guarda para conectar.",
+      "statusNotConnectedFallback": "Instancia no conectada.",
+
+      "qrTitle": "Código QR de emparejamiento",
+      "qrDesc": "Abre WhatsApp en tu teléfono, ve a Dispositivos vinculados y escanea este código.",
+      "qrAlt": "QR de emparejamiento de Evolution",
+
+      "credentialsTitle": "Credenciales de Evolution API",
+      "credentialsDesc": "Conecta a una instancia auto-hospedada de Evolution API v2.3.7+.",
+      "labelBaseUrl": "URL base",
+      "labelInstanceName": "Nombre de la instancia",
+      "labelApiKey": "Clave de API",
+      "labelWebhookSecret": "Secreto del webhook",
+      "placeholderBaseUrl": "https://evolution.example.com",
+      "placeholderInstanceName": "p. ej. wacrm-cuenta-1",
+      "placeholderApiKeyNew": "Clave de API de Evolution",
+      "placeholderWebhookSecretNew": "Secreto que Evolution envía en los webhooks",
+      "webhookSecretHint": "Obligatorio. wacrm configurará Evolution para enviar este valor en el encabezado apikey.",
+      "createInstanceLabel": "Crear instancia si no existe",
+
+      "webhookTitle": "URL del webhook",
+      "webhookDesc": "wacrm registrará esta URL en tu instancia de Evolution automáticamente.",
+      "webhookUrlLabel": "URL del webhook",
+
+      "saving": "Guardando…",
+      "saveConfig": "Guardar configuración",
+      "testing": "Probando…",
+      "testConnection": "Probar conexión",
+      "importing": "Importando…",
+      "importHistory": "Importar historial",
+      "resetting": "Restableciendo…",
+      "resetConfig": "Restablecer",
+
+      "validationBaseUrlRequired": "La URL base y el nombre de la instancia son obligatorios",
+      "validationApiKeyRequired": "La clave de API es obligatoria para la configuración inicial",
+      "validationWebhookSecretRequired": "El secreto del webhook es obligatorio para la configuración inicial",
+      "validationApiKeyReenter": "Vuelve a ingresar la clave de API para guardar los cambios",
+      "validationWebhookSecretRequiredShort": "El secreto del webhook es obligatorio",
+
+      "saveSuccessWithQr": "Configuración guardada. Escanea el código QR con WhatsApp.",
+      "saveSuccessConnected": "Instancia de Evolution conectada.",
+      "saveSuccessNotConnected": "Configuración guardada, pero la instancia aún no está conectada.",
+      "resetSuccess": "Configuración de Evolution borrada.",
+      "copyWebhookSuccess": "URL del webhook copiada al portapapeles",
+
+      "importStartedInline": "Importación histórica iniciada en segundo plano. Los contactos y mensajes aparecerán en breve.",
+      "importStartedToast": "Importación histórica iniciada en segundo plano.",
+      "importStartFailed": "No se pudo iniciar la importación histórica",
+      "saveFailed": "No se pudo guardar la configuración de Evolution",
+      "resetFailed": "No se pudo restablecer la configuración",
+      "testFailed": "Falló la prueba de conexión.",
+      "resetConfirm": "Esto eliminará la configuración de Evolution. ¿Continuar?"
+    },
+    "railAriaLabel": "Secciones de configuración",
     "sections": {
       "overview": "Resumen",
       "profile": "Tu perfil",
@@ -1920,7 +2014,16 @@
       "account_update_failed": "No se pudo actualizar la cuenta.",
       "session_load_failed": "No se pudieron cargar las sesiones.",
       "sign_out_failed": "No se pudo cerrar sesión. Recarga la página.",
-      "network_error": "No se pudo contactar con el servidor. Inténtalo de nuevo."
+      "network_error": "No se pudo contactar con el servidor. Inténtalo de nuevo.",
+      "evolution_config_validate_failed": "No se pudo validar la configuración de Evolution. Verifica los valores e inténtalo de nuevo.",
+      "evolution_instance_already_linked": "Este nombre de instancia de Evolution ya está vinculado a otra cuenta en esta instancia.",
+      "evolution_instance_name_invalid": "El nombre de la instancia no puede contener separadores de ruta.",
+      "evolution_url_unreachable": "No se pudo acceder a la URL proporcionada. Asegúrate de que sea accesible públicamente e inténtalo de nuevo.",
+      "meta_api_error": "Meta rechazó la solicitud: {message}",
+      "meta_registration_failed": "Meta aceptó las credenciales pero no pudo registrar el número para webhooks de entrada: {message}",
+      "pin_invalid": "El PIN de verificación en dos pasos debe tener exactamente 6 dígitos.",
+      "profile_no_account": "Tu perfil no está vinculado a una cuenta.",
+      "whatsapp_phone_number_already_linked": "Este número de WhatsApp ya está vinculado a otra cuenta. Cada número solo puede conectarse a una cuenta de wacrm."
     }
   }
 }

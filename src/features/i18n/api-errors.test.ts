@@ -24,6 +24,24 @@ describe('api-errors catalogue', () => {
     );
   });
 
+  it('exposes the WhatsApp-localization codes', () => {
+    const required = [
+      'evolution_config_validate_failed',
+      'evolution_instance_already_linked',
+      'evolution_instance_name_invalid',
+      'evolution_url_unreachable',
+      'meta_api_error',
+      'meta_registration_failed',
+      'pin_invalid',
+      'profile_no_account',
+      'whatsapp_phone_number_already_linked',
+    ];
+    for (const code of required) {
+      expect(API_ERROR_CODES, `missing code: ${code}`).toContain(code);
+      expect(apiErrorKey(code)).toBe(`Errors.apiErrors.${code}`);
+    }
+  });
+
   it('falls back to Common.unknownError for unknown codes', () => {
     expect(apiErrorKey('not_in_catalogue')).toBe('Common.unknownError');
     expect(apiErrorKey('')).toBe('Common.unknownError');

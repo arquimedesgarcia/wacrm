@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Eye, EyeOff, CheckCircle2, XCircle, Loader2, Copy, RotateCcw, AlertTriangle, Info, History } from 'lucide-react';
+import { useTranslations } from 'next-intl';
+import { useApiError } from '@/features/i18n/use-api-error';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -36,6 +38,8 @@ export function EvolutionConfigPanel({
   liveStatus,
   liveStatusMessage,
 }: EvolutionConfigPanelProps) {
+  const t = useTranslations('Settings.evolution');
+  const tError = useApiError();
   const [config, setConfig] = useState<WhatsAppConfigType | null>(initialConfig);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -76,15 +80,15 @@ export function EvolutionConfigPanel({
 
   async function handleSave() {
     if (!baseUrl.trim() || !instanceName.trim()) {
-      toast.error('Base URL and Instance Name are required');
+      toast.error(t('validationBaseUrlRequired'));
       return;
     }
     if (!config && (!apiKey.trim() || !apiKeyEdited || apiKey === MASKED_SECRET)) {
-      toast.error('API Key is required for initial setup');
+      toast.error(t('validationApiKeyRequired'));
       return;
     }
     if (!config && (!webhookSecret.trim() || webhookSecret === MASKED_SECRET)) {
-      toast.error('Webhook Secret is required for initial setup');
+      toast.error(t('validationWebhookSecretRequired'));
       return;
     }
 
@@ -99,7 +103,7 @@ export function EvolutionConfigPanel({
       if (apiKeyEdited && apiKey !== MASKED_SECRET && apiKey.trim()) {
         payload.api_key = apiKey.trim();
       } else if (config) {
-        toast.error('Please re-enter the API Key to save changes');
+        toast.error(t('validationApiKeyReenter'));
         setSaving(false);
         return;
       }
@@ -109,7 +113,7 @@ export function EvolutionConfigPanel({
       } else if (config && webhookSecret !== MASKED_SECRET && webhookSecret.trim()) {
         payload.webhook_secret = webhookSecret.trim();
       } else if (!config) {
-        toast.error('Webhook Secret is required');
+        toast.error(t('validationWebhookSecretRequiredShort'));
         setSaving(false);
         return;
       }
@@ -123,27 +127,35 @@ export function EvolutionConfigPanel({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to save Evolution configuration');
+        const code = (data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object' && 'code' in data.error && typeof data.error.code === 'string')
+          ? data.error.code
+          : null;
+        const params = (data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object' && 'params' in data.error && data.error.params && typeof data.error.params === 'object')
+          ? data.error.params as Record<string, string | number>
+          : undefined;
+        toast.error(code ? tError(code, params) : t('saveFailed'));
         setSaving(false);
         return;
       }
 
       if (data.qr?.dataUrl) {
         setQrCode(data.qr.dataUrl);
-        toast.success('Configuration saved. Scan the QR code with WhatsApp.');
+        toast.success(t('saveSuccessWithQr'));
       } else if (data.connected) {
-        toast.success('Evolution instance connected.');
+        toast.success(t('saveSuccessConnected'));
       } else {
-        toast.success('Configuration saved, but instance is not connected yet.');
+        toast.success(t('saveSuccessNotConnected'));
       }
 
       if (data.history_import_started) {
-        setImportMessage('Historical import started in the background. Contacts and messages will appear shortly.');
-        toast.info('Historical import started in the background.');
+        setImportMessage(t('importStartedInline'));
+        toast.info(t('importStartedToast'));
       }
 
       setConnectionStatus(data.connected ? 'connected' : 'disconnected');
-      setStatusMessage(data.connected ? '' : data.message || 'Instance not connected.');
+      setStatusMessage(
+        data.connected ? '' : data.error?.code ? tError(data.error.code, data.error.params) : data.message || t('statusNotConnectedFallback')
+      );
 
       // Refresh config state from server.
       const refresh = await fetch('/api/whatsapp/evolution/config', { method: 'GET' });
@@ -168,7 +180,7 @@ export function EvolutionConfigPanel({
       setWebhookSecretEdited(false);
     } catch (err) {
       console.error('Save error:', err);
-      toast.error('Failed to save Evolution configuration');
+      toast.error(t('saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -183,16 +195,24 @@ export function EvolutionConfigPanel({
       if (payload.connected) {
         setConnectionStatus('connected');
         setStatusMessage('');
-        toast.success('Evolution instance connected.');
+        toast.success(t('saveSuccessConnected'));
       } else {
         setConnectionStatus('disconnected');
-        setStatusMessage(payload.message || 'Connection failed');
-        toast.error(payload.message || 'Connection failed');
+        setStatusMessage(
+          payload.error?.code
+            ? tError(payload.error.code, payload.error.params)
+            : payload.message || t('statusNotConnectedFallback')
+        );
+        toast.error(
+          payload.error?.code
+            ? tError(payload.error.code, payload.error.params)
+            : payload.message || t('testFailed')
+        );
       }
     } catch (err) {
       console.error('Test connection error:', err);
       setConnectionStatus('disconnected');
-      toast.error('Connection test failed.');
+      toast.error(t('testFailed'));
     } finally {
       setTesting(false);
     }
@@ -207,31 +227,37 @@ export function EvolutionConfigPanel({
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.error || 'Failed to start historical import');
+        const code = (data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object' && 'code' in data.error && typeof data.error.code === 'string')
+          ? data.error.code
+          : null;
+        toast.error(code ? tError(code) : t('importStartFailed'));
         return;
       }
 
-      setImportMessage('Historical import started in the background. Contacts and messages will appear shortly.');
-      toast.info('Historical import started in the background.');
+      setImportMessage(t('importStartedInline'));
+      toast.info(t('importStartedToast'));
     } catch (err) {
       console.error('Import history error:', err);
-      toast.error('Failed to start historical import');
+      toast.error(t('importStartFailed'));
     } finally {
       setImporting(false);
     }
   }
 
   async function handleReset() {
-    if (!confirm('This will delete the Evolution configuration. Continue?')) return;
+    if (!confirm(t('resetConfirm'))) return;
     setResetting(true);
     try {
       const res = await fetch('/api/whatsapp/evolution/config', { method: 'DELETE' });
       if (!res.ok) {
         const data = await res.json();
-        toast.error(data.error || 'Failed to reset configuration');
+        const code = (data && typeof data === 'object' && 'error' in data && data.error && typeof data.error === 'object' && 'code' in data.error && typeof data.error.code === 'string')
+          ? data.error.code
+          : null;
+        toast.error(code ? tError(code) : t('resetFailed'));
         return;
       }
-      toast.success('Evolution configuration cleared.');
+      toast.success(t('resetSuccess'));
       setConfig(null);
       setBaseUrl('');
       setApiKey('');
@@ -246,7 +272,7 @@ export function EvolutionConfigPanel({
       onConfigChange?.(null);
     } catch (err) {
       console.error('Reset error:', err);
-      toast.error('Failed to reset configuration');
+      toast.error(t('resetFailed'));
     } finally {
       setResetting(false);
     }
@@ -254,7 +280,7 @@ export function EvolutionConfigPanel({
 
   function handleCopyWebhookUrl() {
     navigator.clipboard.writeText(webhookUrl);
-    toast.success('Webhook URL copied to clipboard');
+    toast.success(t('copyWebhookSuccess'));
   }
 
   return (
@@ -263,12 +289,10 @@ export function EvolutionConfigPanel({
         <AlertTriangle className="size-5 text-amber-400 mt-0.5 shrink-0" />
         <div className="flex-1">
           <AlertTitle className="text-amber-200 mb-1">
-            Experimental provider
+            {t('experimentalTitle')}
           </AlertTitle>
           <AlertDescription className="text-amber-100/80 text-sm">
-            Evolution API with Baileys / WhatsApp Web is intended for development and
-            testing. It is not equivalent to the official WhatsApp Cloud API and may be
-            subject to disconnections or restrictions.
+            {t('experimentalDesc')}
           </AlertDescription>
         </div>
       </Alert>
@@ -277,13 +301,10 @@ export function EvolutionConfigPanel({
         <Info className="size-5 text-blue-400 mt-0.5 shrink-0" />
         <div className="flex-1">
           <AlertTitle className="text-blue-200 mb-1">
-            Evolution API notice
+            {t('noticeTitle')}
           </AlertTitle>
           <AlertDescription className="text-blue-100/80 text-sm">
-            Evolution API is licensed under Apache 2.0 with additional brand and
-            attribution conditions. A visible notice of use is required. For commercial
-            redistribution, review the Evolution API license and consider a commercial
-            license if the notice conditions cannot be met.
+            {t('noticeDesc')}
           </AlertDescription>
         </div>
       </Alert>
@@ -296,43 +317,43 @@ export function EvolutionConfigPanel({
             <XCircle className="size-4 text-red-500" />
           )}
           <AlertTitle className="text-foreground mb-0">
-            {connectionStatus === 'connected' ? 'Connected' : 'Not connected'}
+            {connectionStatus === 'connected' ? t('statusConnected') : t('statusNotConnected')}
           </AlertTitle>
         </div>
         <AlertDescription className="text-muted-foreground">
           {connectionStatus === 'connected'
-            ? 'Evolution instance is connected.'
-            : statusMessage || 'Configure and save to connect.'}
+            ? t('statusConnectedDesc')
+            : statusMessage || t('statusNotConnectedDesc')}
         </AlertDescription>
       </Alert>
 
       {qrCode && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-foreground">Pairing QR Code</CardTitle>
+            <CardTitle className="text-foreground">{t('qrTitle')}</CardTitle>
             <CardDescription className="text-muted-foreground">
-              Open WhatsApp on your phone, go to Linked Devices, and scan this code.
+              {t('qrDesc')}
             </CardDescription>
           </CardHeader>
           <CardContent>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={qrCode} alt="Evolution pairing QR" className="mx-auto max-w-[260px]" />
+            <img src={qrCode} alt={t('qrAlt')} className="mx-auto max-w-[260px]" />
           </CardContent>
         </Card>
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-foreground">Evolution API Credentials</CardTitle>
+          <CardTitle className="text-foreground">{t('credentialsTitle')}</CardTitle>
           <CardDescription className="text-muted-foreground">
-            Connect to a self-hosted Evolution API v2.3.7+ instance.
+            {t('credentialsDesc')}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label className="text-muted-foreground">Base URL</Label>
+            <Label className="text-muted-foreground">{t('labelBaseUrl')}</Label>
             <Input
-              placeholder="https://evolution.example.com"
+              placeholder={t('placeholderBaseUrl')}
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
@@ -340,9 +361,9 @@ export function EvolutionConfigPanel({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-muted-foreground">Instance Name</Label>
+            <Label className="text-muted-foreground">{t('labelInstanceName')}</Label>
             <Input
-              placeholder="e.g. wacrm-account-1"
+              placeholder={t('placeholderInstanceName')}
               value={instanceName}
               onChange={(e) => setInstanceName(e.target.value)}
               className="bg-muted border-border text-foreground placeholder:text-muted-foreground"
@@ -350,11 +371,11 @@ export function EvolutionConfigPanel({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-muted-foreground">API Key</Label>
+            <Label className="text-muted-foreground">{t('labelApiKey')}</Label>
             <div className="relative">
               <Input
                 type={showApiKey ? 'text' : 'password'}
-                placeholder={config ? '••••••••••••••••' : 'Evolution API key'}
+                placeholder={config ? '••••••••••••••••' : t('placeholderApiKeyNew')}
                 value={apiKey}
                 onChange={(e) => {
                   setApiKey(e.target.value);
@@ -379,11 +400,11 @@ export function EvolutionConfigPanel({
           </div>
 
           <div className="space-y-2">
-            <Label className="text-muted-foreground">Webhook Secret</Label>
+            <Label className="text-muted-foreground">{t('labelWebhookSecret')}</Label>
             <div className="relative">
               <Input
                 type={showWebhookSecret ? 'text' : 'password'}
-                placeholder={config ? '••••••••••••••••' : 'Secret Evolution sends in webhooks'}
+                placeholder={config ? '••••••••••••••••' : t('placeholderWebhookSecretNew')}
                 value={webhookSecret}
                 onChange={(e) => {
                   setWebhookSecret(e.target.value);
@@ -406,8 +427,9 @@ export function EvolutionConfigPanel({
               </button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Required. WaCRM will configure Evolution to send this value in the{' '}
-              <code>apikey</code> header.
+              {t.rich('webhookSecretHint', {
+                code: (chunks) => <code className="text-foreground">{chunks}</code>,
+              })}
             </p>
           </div>
 
@@ -418,7 +440,7 @@ export function EvolutionConfigPanel({
               onCheckedChange={(checked) => setCreateInstance(checked === true)}
             />
             <Label htmlFor="create-instance" className="text-muted-foreground text-sm cursor-pointer">
-              Create instance if it does not exist
+              {t('createInstanceLabel')}
             </Label>
           </div>
         </CardContent>
@@ -426,14 +448,14 @@ export function EvolutionConfigPanel({
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-foreground">Webhook URL</CardTitle>
+          <CardTitle className="text-foreground">{t('webhookTitle')}</CardTitle>
           <CardDescription className="text-muted-foreground">
-            WaCRM will register this URL on your Evolution instance automatically.
+            {t('webhookDesc')}
           </CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2">
-            <Label className="text-muted-foreground">Webhook URL</Label>
+            <Label className="text-muted-foreground">{t('webhookUrlLabel')}</Label>
             <div className="flex gap-2">
               <Input
                 readOnly
@@ -458,10 +480,10 @@ export function EvolutionConfigPanel({
           {saving ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              Saving…
+              {t('saving')}
             </>
           ) : (
-            'Save Configuration'
+            t('saveConfig')
           )}
         </Button>
         <Button
@@ -473,12 +495,12 @@ export function EvolutionConfigPanel({
           {testing ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              Testing…
+              {t('testing')}
             </>
           ) : (
             <>
               <CheckCircle2 className="size-4" />
-              Test Connection
+              {t('testConnection')}
             </>
           )}
         </Button>
@@ -492,12 +514,12 @@ export function EvolutionConfigPanel({
             {importing ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Importing…
+                {t('importing')}
               </>
             ) : (
               <>
                 <History className="size-4" />
-                Import history
+                {t('importHistory')}
               </>
             )}
           </Button>
@@ -512,12 +534,12 @@ export function EvolutionConfigPanel({
             {resetting ? (
               <>
                 <Loader2 className="size-4 animate-spin" />
-                Resetting…
+                {t('resetting')}
               </>
             ) : (
               <>
                 <RotateCcw className="size-4" />
-                Reset
+                {t('resetConfig')}
               </>
             )}
           </Button>

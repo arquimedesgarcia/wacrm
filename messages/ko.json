@@ -1536,8 +1536,102 @@
       "step4_3": "위의 <strong class=\"text-foreground\">웹훅 콜백 URL</strong>을 붙여넣기",
       "step4_4": "여기서 설정한 것과 동일한 <strong class=\"text-foreground\">인증 토큰</strong>을 입력",
       "step4_5": "\"messages\" 웹훅 필드를 구독",
-      "metaDocs": "Meta WhatsApp API 문서"
+      "metaDocs": "Meta WhatsApp API 문서",
+
+      "providerCardTitle": "WhatsApp 제공자",
+      "providerCardDesc": "이 계정에 사용할 WhatsApp 연결 방식을 선택하세요.",
+      "providerMeta": "Meta Cloud API",
+      "providerEvolution": "Evolution API",
+      "providerEvolutionNotice": "Evolution API는 WhatsApp Web / Baileys를 사용하며 테스트용입니다. 템플릿이나 인터랙티브 메시지는 지원하지 않습니다.",
+
+      "loadFailed": "WhatsApp 설정을 불러오지 못했습니다",
+      "saveFailed": "설정을 저장하지 못했습니다",
+      "resetFailed": "설정을 재설정하지 못했습니다",
+      "resetConfirm": "현재 WhatsApp 설정을 삭제하고 다시 입력하게 됩니다. 계속하시겠습니까?",
+      "resetSuccess": "설정이 지워졌습니다. 자격 증명을 다시 입력할 수 있습니다.",
+
+      "phoneNumberIdRequired": "전화번호 ID는 필수입니다",
+      "accessTokenRequired": "초기 설정에는 액세스 토큰이 필요합니다",
+      "accessTokenReenter": "변경 사항을 저장하려면 액세스 토큰을 다시 입력하세요",
+
+      "saveVerified": "자격 증명이 저장 및 확인되었습니다. 인바운드 등록이 건너뛰어졌습니다(PIN 없음) — 아래 등록 상태를 확인하세요.",
+      "saveLive": "WhatsApp에 연결되었습니다. 이벤트가 1분 이내에 도착하기 시작합니다.",
+      "saveLiveNamed": "활성 — {name}이(가) 이벤트를 수신할 수 있습니다.",
+      "saveRegistrationFailed": "저장되었지만 Meta가 번호를 등록하지 못했습니다: {message}",
+
+      "testConnectionSuccess": "API 연결에 성공했습니다",
+      "testConnectionSuccessNamed": "{name}에 연결됨",
+      "testConnectionFailedNetwork": "연결 테스트에 실패했습니다. 네트워크를 확인하고 다시 시도하세요.",
+
+      "verifyRegistrationSuccess": "번호가 완전히 연결되었습니다 — Meta가 이벤트를 전달합니다.",
+      "verifyRegistrationFailed": "번호가 완전히 등록되지 않았습니다. 아래에서 어떤 단계가 실패했는지 확인하세요.",
+      "verifyRegistrationUnreachable": "검증 엔드포인트에 연결할 수 없습니다.",
+
+      "copyWebhookSuccess": "Webhook URL이 클립보드에 복사되었습니다"
     },
+    "evolution": {
+      "experimentalTitle": "실험적 제공자",
+      "experimentalDesc": "Baileys / WhatsApp Web 기반의 Evolution API는 개발 및 테스트용입니다. 공식 WhatsApp Cloud API와 동등하지 않으며 연결 끊김이나 제한이 있을 수 있습니다.",
+      "noticeTitle": "Evolution API 안내",
+      "noticeDesc": "Evolution API는 추가 브랜드 및 attribution 조건이 있는 Apache 2.0 라이선스를 따릅니다. 사용에 대한 안내를 표시해야 합니다. 상업적 재배포의 경우 Evolution API 라이선스를 검토하고 안내 조건을 충족할 수 없는 경우 상업용 라이선스를 고려하세요.",
+
+      "statusConnected": "연결됨",
+      "statusNotConnected": "연결되지 않음",
+      "statusConnectedDesc": "Evolution 인스턴스가 연결되었습니다.",
+      "statusNotConnectedDesc": "연결하려면 설정하고 저장하세요.",
+      "statusNotConnectedFallback": "인스턴스가 연결되지 않았습니다.",
+
+      "qrTitle": "페어링 QR 코드",
+      "qrDesc": "휴대폰에서 WhatsApp을 열고 연결된 기기로 이동한 다음 이 코드를 스캔하세요.",
+      "qrAlt": "Evolution 페어링 QR",
+
+      "credentialsTitle": "Evolution API 자격 증명",
+      "credentialsDesc": "자체 호스팅 Evolution API v2.3.7+ 인스턴스에 연결합니다.",
+      "labelBaseUrl": "기본 URL",
+      "labelInstanceName": "인스턴스 이름",
+      "labelApiKey": "API 키",
+      "labelWebhookSecret": "웹훅 시크릿",
+      "placeholderBaseUrl": "https://evolution.example.com",
+      "placeholderInstanceName": "예: wacrm-account-1",
+      "placeholderApiKeyNew": "Evolution API 키",
+      "placeholderWebhookSecretNew": "Evolution이 웹훅에서 보내는 시크릿",
+      "webhookSecretHint": "필수입니다. wacrm은 apikey 헤더에 이 값을 보내도록 Evolution을 설정합니다.",
+      "createInstanceLabel": "인스턴스가 없으면 생성",
+
+      "webhookTitle": "Webhook URL",
+      "webhookDesc": "wacrm이 Evolution 인스턴스에 이 URL을 자동으로 등록합니다.",
+      "webhookUrlLabel": "Webhook URL",
+
+      "saving": "저장 중…",
+      "saveConfig": "설정 저장",
+      "testing": "테스트 중…",
+      "testConnection": "연결 테스트",
+      "importing": "가져오는 중…",
+      "importHistory": "기록 가져오기",
+      "resetting": "재설정 중…",
+      "resetConfig": "재설정",
+
+      "validationBaseUrlRequired": "기본 URL과 인스턴스 이름은 필수입니다",
+      "validationApiKeyRequired": "초기 설정에는 API 키가 필요합니다",
+      "validationWebhookSecretRequired": "초기 설정에는 웹훅 시크릿이 필요합니다",
+      "validationApiKeyReenter": "변경 사항을 저장하려면 API 키를 다시 입력하세요",
+      "validationWebhookSecretRequiredShort": "웹훅 시크릿은 필수입니다",
+
+      "saveSuccessWithQr": "설정이 저장되었습니다. WhatsApp으로 QR 코드를 스캔하세요.",
+      "saveSuccessConnected": "Evolution 인스턴스가 연결되었습니다.",
+      "saveSuccessNotConnected": "설정은 저장되었지만 인스턴스가 아직 연결되지 않았습니다.",
+      "resetSuccess": "Evolution 설정이 지워졌습니다.",
+      "copyWebhookSuccess": "Webhook URL이 클립보드에 복사되었습니다",
+
+      "importStartedInline": "백그라운드에서 기록 가져오기가 시작되었습니다. 연락처와 메시지는 곧 표시됩니다.",
+      "importStartedToast": "백그라운드에서 기록 가져오기가 시작되었습니다.",
+      "importStartFailed": "기록 가져오기를 시작하지 못했습니다",
+      "saveFailed": "Evolution 설정을 저장하지 못했습니다",
+      "resetFailed": "설정을 재설정하지 못했습니다",
+      "testFailed": "연결 테스트에 실패했습니다.",
+      "resetConfirm": "Evolution 설정을 삭제합니다. 계속하시겠습니까?"
+    },
+    "railAriaLabel": "설정 섹션",
     "sections": {
       "overview": "개요",
       "profile": "내 프로필",
@@ -1920,7 +2014,16 @@
       "account_update_failed": "계정을 업데이트하지 못했습니다.",
       "session_load_failed": "세션을 불러오지 못했습니다.",
       "sign_out_failed": "로그아웃하지 못했습니다. 페이지를 새로 고침하세요.",
-      "network_error": "서버에 연결할 수 없습니다. 다시 시도해 주세요."
+      "network_error": "서버에 연결할 수 없습니다. 다시 시도해 주세요.",
+      "evolution_config_validate_failed": "Evolution 설정을 검증하지 못했습니다. 값을 확인하고 다시 시도하세요.",
+      "evolution_instance_already_linked": "이 Evolution 인스턴스 이름은 이미 이 인스턴스의 다른 계정에 연결되어 있습니다.",
+      "evolution_instance_name_invalid": "인스턴스 이름에 경로 구분 기호를 포함할 수 없습니다.",
+      "evolution_url_unreachable": "제공된 URL에 연결할 수 없습니다. 공개적으로 라우팅 가능한지 확인하고 다시 시도하세요.",
+      "meta_api_error": "Meta가 요청을 거부했습니다: {message}",
+      "meta_registration_failed": "Meta는 자격 증명을 수락했지만 인바운드 웹훅용 번호를 등록하지 못했습니다: {message}",
+      "pin_invalid": "2단계 인증 PIN은 정확히 6자리여야 합니다.",
+      "profile_no_account": "프로필이 계정에 연결되어 있지 않습니다.",
+      "whatsapp_phone_number_already_linked": "이 WhatsApp 전화번호는 이미 다른 계정에 연결되어 있습니다. 각 번호는 하나의 wacrm 계정에만 연결할 수 있습니다."
     }
   }
 }

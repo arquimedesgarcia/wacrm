@@ -23,6 +23,7 @@ import { EvolutionAdapter } from '@/lib/whatsapp/providers/evolution-adapter'
 import { ProviderError } from '@/lib/whatsapp/providers'
 import { isDeliverableUrl } from '@/lib/webhooks/ssrf'
 import { importEvolutionHistory } from '@/lib/whatsapp/evolution-import'
+import { errorCode } from '@/lib/api/v1/respond'
 import type { WhatsAppConfig } from '@/types'
 
 async function resolveAccountId(
@@ -57,7 +58,12 @@ export async function GET(request: Request) {
     const accountId = await resolveAccountId(supabase, userId)
     if (!accountId) {
       return NextResponse.json(
-        { connected: false, reason: 'no_account', message: 'Profile not linked to an account.' },
+        {
+          connected: false,
+          reason: 'no_account',
+          error: { code: 'profile_no_account' },
+          message: 'Profile not linked to an account.',
+        },
         { status: 200 }
       )
     }
@@ -72,14 +78,24 @@ export async function GET(request: Request) {
     if (error) {
       console.error('[evolution/config GET] error:', error)
       return NextResponse.json(
-        { connected: false, reason: 'db_error', message: 'Failed to fetch configuration' },
+        {
+          connected: false,
+          reason: 'db_error',
+          error: { code: 'evolution_config_load_failed' },
+          message: 'Failed to fetch configuration',
+        },
         { status: 200 }
       )
     }
 
     if (!config) {
       return NextResponse.json(
-        { connected: false, reason: 'no_config', message: 'No Evolution configuration saved yet.' },
+        {
+          connected: false,
+          reason: 'no_config',
+          error: { code: 'evolution_not_configured' },
+          message: 'No Evolution configuration saved yet.',
+        },
         { status: 200 }
       )
     }
@@ -102,6 +118,11 @@ export async function GET(request: Request) {
       connected: status.connected,
       reason: status.connected ? undefined : 'disconnected',
       message: errorMessage || status.detail || 'Instance not connected.',
+      error: status.connected
+        ? undefined
+        : errorMessage
+          ? { code: 'evolution_send_failed', params: { message: errorMessage } }
+          : undefined,
       instance_name: config.evolution_instance_name,
       base_url: config.evolution_base_url,
       webhook_url: webhookUrl,
@@ -109,10 +130,7 @@ export async function GET(request: Request) {
     })
   } catch (error) {
     console.error('[evolution/config GET] exception:', error)
-    return NextResponse.json(
-      { connected: false, reason: 'unknown', message: 'Internal server error' },
-      { status: 500 }
-    )
+    return errorCode('internal', 500, { message: 'Internal server error' })
   }
 }
 
@@ -130,10 +148,9 @@ export async function POST(request: Request) {
     } = body
 
     if (!base_url || !api_key || !instance_name || !webhook_secret) {
-      return NextResponse.json(
-        { error: 'base_url, api_key, instance_name and webhook_secret are required' },
-        { status: 400 }
-      )
+      return errorCode('evolution_config_validate_failed', 400, {
+        message: 'base_url, api_key, instance_name and webhook_secret are required',
+      })
     }
 
     const normalizedBaseUrl = String(base_url).replace(/\/+$/, '')
@@ -141,25 +158,22 @@ export async function POST(request: Request) {
     const trimmedWebhookSecret = String(webhook_secret).trim()
 
     if (!/^https?:\/\/.+/i.test(normalizedBaseUrl)) {
-      return NextResponse.json(
-        { error: 'base_url must be a valid http(s) URL' },
-        { status: 400 }
-      )
+      return errorCode('evolution_invalid_url', 400, {
+        message: 'base_url must be a valid http(s) URL',
+      })
     }
 
     const deliverable = await isDeliverableUrl(normalizedBaseUrl)
     if (!deliverable) {
-      return NextResponse.json(
-        { error: 'base_url must resolve to a publicly-routable address' },
-        { status: 400 }
-      )
+      return errorCode('evolution_url_unreachable', 400, {
+        message: 'base_url must resolve to a publicly-routable address',
+      })
     }
 
     if (/[\/\\]/.test(normalizedInstance)) {
-      return NextResponse.json(
-        { error: 'instance_name cannot contain path separators' },
-        { status: 400 }
-      )
+      return errorCode('evolution_instance_name_invalid', 400, {
+        message: 'instance_name cannot contain path separators',
+      })
     }
 
     // Reject if the instance name is already used by another account.
@@ -173,13 +187,14 @@ export async function POST(request: Request) {
 
     if (claimedError) {
       console.error('[evolution/config POST] conflict check failed:', claimedError)
-      return NextResponse.json({ error: 'Failed to validate configuration' }, { status: 500 })
+      return errorCode('config_validate_failed', 500, {
+        message: 'Failed to validate configuration',
+      })
     }
     if (claimed) {
-      return NextResponse.json(
-        { error: 'This Evolution instance name is already linked to another account.' },
-        { status: 409 }
-      )
+      return errorCode('evolution_instance_already_linked', 409, {
+        message: 'This Evolution instance name is already linked to another account.',
+      })
     }
 
     // Encrypt secrets before any external call or persistence.
@@ -191,10 +206,9 @@ export async function POST(request: Request) {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown encryption error'
       console.error('[evolution/config POST] encryption failed:', message)
-      return NextResponse.json(
-        { error: 'Failed to encrypt credentials. Check ENCRYPTION_KEY.' },
-        { status: 500 }
-      )
+      return errorCode('config_encryption_corrupt', 500, {
+        message: 'Failed to encrypt credentials. Check ENCRYPTION_KEY.',
+      })
     }
 
     // Build a candidate config to verify credentials and create/connect.
@@ -233,12 +247,15 @@ export async function POST(request: Request) {
       console.error('[evolution/config POST] verification/webhook failed:', message)
 
       if (err instanceof ProviderError && err.status) {
-        return NextResponse.json({ error: message }, { status: err.status })
+        return errorCode('evolution_send_failed', err.status, {
+          message,
+          params: { message },
+        })
       }
-      return NextResponse.json(
-        { error: `Evolution API error: ${message}` },
-        { status: 400 }
-      )
+      return errorCode('evolution_send_failed', 400, {
+        message: `Evolution API error: ${message}`,
+        params: { message },
+      })
     }
 
     const baseRow = {
@@ -269,7 +286,9 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
       if (updateError) {
         console.error('[evolution/config POST] update failed:', updateError)
-        return NextResponse.json({ error: 'Failed to update configuration' }, { status: 500 })
+        return errorCode('config_update_failed', 500, {
+          message: 'Failed to update configuration',
+        })
       }
     } else {
       const { error: insertError } = await supabase
@@ -281,7 +300,9 @@ export async function POST(request: Request) {
         })
       if (insertError) {
         console.error('[evolution/config POST] insert failed:', insertError)
-        return NextResponse.json({ error: 'Failed to save configuration' }, { status: 500 })
+        return errorCode('evolution_config_save_failed', 500, {
+          message: 'Failed to save configuration',
+        })
       }
     }
 
@@ -328,7 +349,7 @@ export async function POST(request: Request) {
     })
   } catch (error) {
     console.error('[evolution/config POST] exception:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return errorCode('internal', 500, { message: 'Internal server error' })
   }
 }
 
@@ -344,12 +365,14 @@ export async function DELETE() {
 
     if (error) {
       console.error('[evolution/config DELETE] error:', error)
-      return NextResponse.json({ error: 'Failed to delete configuration' }, { status: 500 })
+      return errorCode('evolution_config_clear_failed', 500, {
+        message: 'Failed to delete configuration',
+      })
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('[evolution/config DELETE] exception:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return errorCode('internal', 500, { message: 'Internal server error' })
   }
 }
