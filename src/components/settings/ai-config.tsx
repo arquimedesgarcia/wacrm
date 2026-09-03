@@ -31,6 +31,7 @@ import type { AiProvider } from '@/lib/ai/types';
 import type { AccountMember } from '@/types';
 import { fetchAccountMembers, memberLabel } from '@/lib/account/members';
 import { useTranslations } from 'next-intl';
+import { useApiError } from '@/features/i18n/use-api-error';
 
 const MASKED_KEY = '••••••••••••••••';
 
@@ -52,6 +53,22 @@ export function AiConfig() {
   const { accountId, accountRole, profileLoading } = useAuth();
   const canEdit = accountRole ? canEditSettings(accountRole) : false;
   const t = useTranslations('Settings.aiConfig');
+  const tError = useApiError();
+
+  // The API answers with the standard `{ error: { code, message?, params? } }`
+  // envelope; translate by `code` and only fall back to the local copy when
+  // the envelope is missing.
+  const toastError = useCallback(
+    (data: unknown, fallbackKey: string) => {
+      const err =
+        data && typeof data === 'object'
+          ? (data as { error?: { code?: string; params?: Record<string, string | number> } })
+              .error
+          : undefined;
+      toast.error(err?.code ? tError(err.code, err.params) : t(fallbackKey));
+    },
+    [t, tError]
+  );
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -88,7 +105,7 @@ export function AiConfig() {
       const res = await fetch('/api/ai/config');
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? t('loadFailed'));
+        toastError(data, 'loadFailed');
         return;
       }
       if (data.configured) {
@@ -112,7 +129,7 @@ export function AiConfig() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t, toastError]);
 
   useEffect(() => {
     if (!accountId || loadedAccountIdRef.current === accountId) return;
@@ -167,7 +184,7 @@ export function AiConfig() {
       });
       const data = await res.json();
       if (res.ok) toast.success(t('testSuccess'));
-      else toast.error(data.error ?? t('testRejected'));
+      else toastError(data, 'testRejected');
     } catch {
       toast.error(t('testNetworkError'));
     } finally {
@@ -196,7 +213,7 @@ export function AiConfig() {
         toast.success(t('saveSuccess'));
         await fetchConfig();
       } else {
-        toast.error(data.error ?? t('saveFailed'));
+        toastError(data, 'saveFailed');
       }
     } catch {
       toast.error(t('saveFailed'));
@@ -221,7 +238,7 @@ export function AiConfig() {
         setHandoffAgentId('');
       } else {
         const data = await res.json();
-        toast.error(data.error ?? t('removeFailed'));
+        toastError(data, 'removeFailed');
       }
     } catch {
       toast.error(t('removeFailed'));

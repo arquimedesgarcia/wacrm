@@ -4,6 +4,7 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadEmbeddingsKey } from '@/lib/ai/config'
 import { ingestDocument } from '@/lib/ai/knowledge'
@@ -24,10 +25,9 @@ export async function GET() {
       .order('updated_at', { ascending: false })
     if (error) {
       console.error('[ai/knowledge GET] error:', error)
-      return NextResponse.json(
-        { error: 'Failed to load knowledge base' },
-        { status: 500 },
-      )
+      return errorCode('knowledge_load_failed', 500, {
+        message: 'Failed to load knowledge base',
+      })
     }
     return NextResponse.json({ documents: data ?? [] })
   } catch (err) {
@@ -51,10 +51,9 @@ export async function POST(request: Request) {
     const title = typeof body?.title === 'string' ? body.title.trim() : ''
     const content = typeof body?.content === 'string' ? body.content.trim() : ''
     if (!title || !content) {
-      return NextResponse.json(
-        { error: 'title and content are required' },
-        { status: 400 },
-      )
+      return errorCode('knowledge_fields_required', 400, {
+        message: 'title and content are required',
+      })
     }
 
     const { data: doc, error } = await supabase
@@ -64,10 +63,9 @@ export async function POST(request: Request) {
       .single()
     if (error || !doc) {
       console.error('[ai/knowledge POST] insert error:', error)
-      return NextResponse.json(
-        { error: 'Failed to save document' },
-        { status: 500 },
-      )
+      return errorCode('document_save_failed', 500, {
+        message: 'Failed to save document',
+      })
     }
 
     const { key: embeddingsApiKey, corrupt } = await loadEmbeddingsKey(

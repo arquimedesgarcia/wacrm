@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadAiConfig } from '@/lib/ai/config'
 import { buildConversationContext } from '@/lib/ai/context'
@@ -37,10 +38,9 @@ export async function POST(request: Request) {
     const conversationId =
       body && typeof body.conversation_id === 'string' ? body.conversation_id : ''
     if (!conversationId) {
-      return NextResponse.json(
-        { error: 'conversation_id is required' },
-        { status: 400 },
-      )
+      return errorCode('conversation_id_required', 400, {
+        message: 'conversation_id is required',
+      })
     }
 
     // RLS scopes the SSR client to the caller's account, so a missing
@@ -52,10 +52,14 @@ export async function POST(request: Request) {
       .maybeSingle()
     if (convErr) {
       console.error('[ai/draft] conversation lookup error:', convErr)
-      return NextResponse.json({ error: 'Failed to load conversation' }, { status: 500 })
+      return errorCode('conversation_load_failed', 500, {
+        message: 'Failed to load conversation',
+      })
     }
     if (!conversation) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      return errorCode('conversation_not_found', 404, {
+        message: 'Conversation not found',
+      })
     }
 
     const config = await loadAiConfig(supabase, accountId).catch((err) => {
@@ -67,26 +71,19 @@ export async function POST(request: Request) {
       })
     })
     if (!config) {
-      return NextResponse.json(
-        {
-          error: 'AI assistant is not set up. Enable it in Settings → AI Assistant.',
-          code: 'ai_not_configured',
-        },
-        { status: 400 },
-      )
+      return errorCode('ai_not_configured', 400, {
+        message:
+          'AI assistant is not set up. Enable it in Settings → AI Assistant.',
+      })
     }
 
     const messages = await buildConversationContext(supabase, conversationId)
     // Nothing to draft from — a brand-new thread with no customer text
     // would otherwise produce a nonsensical reply-to-nothing.
     if (messages.length === 0) {
-      return NextResponse.json(
-        {
-          error: 'No messages to draft from yet.',
-          code: 'no_messages',
-        },
-        { status: 400 },
-      )
+      return errorCode('draft_no_messages', 400, {
+        message: 'No messages to draft from yet.',
+      })
     }
 
     // Ground the draft in the account's knowledge base (best-effort —
@@ -129,10 +126,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ draft: text })
   } catch (err) {
     if (err instanceof AiError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: err.status },
-      )
+      return errorCode(err.code, err.status, { message: err.message })
     }
     return toErrorResponse(err)
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadAiConfig } from '@/lib/ai/config'
 import { retrieveKnowledge } from '@/lib/ai/knowledge'
@@ -31,7 +32,9 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => null)
     const rawMessages = Array.isArray(body?.messages) ? body.messages : null
     if (!rawMessages) {
-      return NextResponse.json({ error: 'messages is required' }, { status: 400 })
+      return errorCode('messages_required', 400, {
+        message: 'messages is required',
+      })
     }
 
     const messages: ChatMessage[] = rawMessages
@@ -47,10 +50,9 @@ export async function POST(request: Request) {
       .slice(-MAX_TURNS)
 
     if (messages.length === 0) {
-      return NextResponse.json(
-        { error: 'Send a message to test the agent.' },
-        { status: 400 },
-      )
+      return errorCode('messages_required', 400, {
+        message: 'Send a message to test the agent.',
+      })
     }
 
     const config = await loadAiConfig(supabase, accountId, {
@@ -63,13 +65,9 @@ export async function POST(request: Request) {
       })
     })
     if (!config) {
-      return NextResponse.json(
-        {
-          error: 'No agent configured yet. Add your provider key in Setup.',
-          code: 'ai_not_configured',
-        },
-        { status: 400 },
-      )
+      return errorCode('ai_not_configured', 400, {
+        message: 'No agent configured yet. Add your provider key in Setup.',
+      })
     }
 
     const knowledge = await retrieveKnowledge(
@@ -88,10 +86,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ reply: text, handoff })
   } catch (err) {
     if (err instanceof AiError) {
-      return NextResponse.json(
-        { error: err.message, code: err.code },
-        { status: err.status },
-      )
+      return errorCode(err.code, err.status, { message: err.message })
     }
     return toErrorResponse(err)
   }

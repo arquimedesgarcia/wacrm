@@ -48,6 +48,7 @@ import {
 } from "@/lib/storage/upload-media";
 import { ReplyQuote } from "./reply-quote";
 import { useTranslations } from "next-intl";
+import { useApiError } from "@/features/i18n/use-api-error";
 import {
   InteractiveBuilder,
   blankButtonsPayload,
@@ -142,6 +143,7 @@ export function MessageComposer({
   onClearReply,
 }: MessageComposerProps) {
   const t = useTranslations("Inbox.composer");
+  const tError = useApiError();
 
   const [text, setText] = useState("");
   const [sending, setSending] = useState(false);
@@ -268,11 +270,8 @@ export function MessageComposer({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (data.code === "ai_not_configured") {
-          toast.error("AI isn't set up yet — enable it in Settings → AI Assistant.");
-        } else {
-          toast.error(data.error ?? "Couldn't draft a reply.");
-        }
+        const code = data?.error?.code;
+        toast.error(code ? tError(code, data.error.params) : t("draftFailed"));
         return;
       }
       const draftText = typeof data.draft === "string" ? data.draft.trim() : "";
@@ -296,7 +295,7 @@ export function MessageComposer({
     } finally {
       setDrafting(false);
     }
-  }, [drafting, conversationId, adjustHeight]);
+  }, [drafting, conversationId, adjustHeight, t, tError]);
 
   // ---- Interactive message + quick replies --------------------------
 

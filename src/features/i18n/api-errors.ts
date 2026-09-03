@@ -189,6 +189,20 @@ export const API_ERROR_CODES = [
   'session_load_failed',
   'sign_out_failed',
   'network_error',
+  'key_decrypt_failed',
+  'messages_required',
+  'model_required',
+  'ai_provider_invalid',
+  'api_key_required',
+  'ai_test_failed',
+  'conversation_id_required',
+  'conversation_load_failed',
+  'knowledge_fields_required',
+  'knowledge_field_empty',
+  'knowledge_reindex_failed',
+  'paused_required',
+  'handoff_agent_not_member',
+  'embeddings_key_invalid',
 ] as const;
 
 export type KnownApiErrorCode = (typeof API_ERROR_CODES)[number];

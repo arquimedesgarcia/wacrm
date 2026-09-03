@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { daysAgoStart, lastNDayKeys, localDayKey } from '@/lib/dashboard/date-utils'
 
 // Rows are aggregated in-process over a bounded window. An active
@@ -63,10 +64,9 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error('[ai/usage GET] fetch error:', error)
-      return NextResponse.json(
-        { error: 'Failed to load usage' },
-        { status: 500 },
-      )
+      return errorCode('usage_load_failed', 500, {
+        message: 'Failed to load usage',
+      })
     }
 
     const all = (data ?? []) as UsageRow[]

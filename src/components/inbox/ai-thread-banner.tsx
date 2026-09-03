@@ -5,6 +5,7 @@ import { Sparkles, Hand, Undo2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
+import { useApiError } from "@/features/i18n/use-api-error";
 import { useAuth } from "@/hooks/use-auth";
 
 // ------------------------------------------------------------
@@ -79,6 +80,7 @@ export function AiThreadBanner({
   onChange,
 }: AiThreadBannerProps) {
   const t = useTranslations("Inbox.aiBanner");
+  const tError = useApiError();
   const { accountId } = useAuth();
   const [autoReplyOn, setAutoReplyOn] = useState<boolean | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,7 +111,8 @@ export function AiThreadBanner({
         });
         if (!res.ok) {
           const j = await res.json().catch(() => ({}));
-          toast.error(j?.error ?? t("updateError"));
+          const code = j?.error?.code;
+          toast.error(code ? tError(code, j.error.params) : t("updateError"));
           return;
         }
         setPaused(paused);
@@ -131,7 +134,7 @@ export function AiThreadBanner({
         setBusy(false);
       }
     },
-    [conversationId, currentUserId, onChange, t],
+    [conversationId, currentUserId, onChange, t, tError],
   );
 
   // Account has no auto-reply → nothing to show. (Still loading → nothing.)

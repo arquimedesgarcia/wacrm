@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 
 type Params = { params: Promise<{ conversationId: string }> }
@@ -36,10 +37,9 @@ export async function POST(request: Request, { params }: Params) {
     const { conversationId } = await params
     const body = await request.json().catch(() => null)
     if (!body || typeof body.paused !== 'boolean') {
-      return NextResponse.json(
-        { error: 'paused (boolean) is required' },
-        { status: 400 },
-      )
+      return errorCode('paused_required', 400, {
+        message: 'paused (boolean) is required',
+      })
     }
     const paused = body.paused as boolean
     const assignToMe = body.assign_to_me === true
@@ -53,13 +53,14 @@ export async function POST(request: Request, { params }: Params) {
       .maybeSingle()
     if (convErr) {
       console.error('[ai/autoreply] conversation lookup error:', convErr)
-      return NextResponse.json(
-        { error: 'Failed to load conversation' },
-        { status: 500 },
-      )
+      return errorCode('conversation_load_failed', 500, {
+        message: 'Failed to load conversation',
+      })
     }
     if (!conv) {
-      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 })
+      return errorCode('conversation_not_found', 404, {
+        message: 'Conversation not found',
+      })
     }
 
     const update: Record<string, unknown> = { ai_autoreply_disabled: paused }
@@ -90,10 +91,9 @@ export async function POST(request: Request, { params }: Params) {
       .eq('account_id', accountId)
     if (upErr) {
       console.error('[ai/autoreply] update error:', upErr)
-      return NextResponse.json(
-        { error: 'Failed to update conversation' },
-        { status: 500 },
-      )
+      return errorCode('conversation_update_failed', 500, {
+        message: 'Failed to update conversation',
+      })
     }
 
     return NextResponse.json({ success: true, paused })

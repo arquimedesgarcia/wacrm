@@ -4,6 +4,7 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadEmbeddingsKey } from '@/lib/ai/config'
 import { ingestDocument } from '@/lib/ai/knowledge'
@@ -26,9 +27,13 @@ export async function GET(_request: Request, { params }: Params) {
       .maybeSingle()
     if (error) {
       console.error('[ai/knowledge/[id] GET] error:', error)
-      return NextResponse.json({ error: 'Failed to load document' }, { status: 500 })
+      return errorCode('document_load_failed', 500, {
+        message: 'Failed to load document',
+      })
     }
-    if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!data) {
+      return errorCode('not_found', 404, { message: 'Not found' })
+    }
     return NextResponse.json(data)
   } catch (err) {
     return toErrorResponse(err)
@@ -50,13 +55,19 @@ export async function PATCH(request: Request, { params }: Params) {
     const title = typeof body?.title === 'string' ? body.title.trim() : undefined
     const content = typeof body?.content === 'string' ? body.content.trim() : undefined
     if (title === undefined && content === undefined) {
-      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+      return errorCode('bad_request', 400, { message: 'Nothing to update' })
     }
     if (title !== undefined && !title) {
-      return NextResponse.json({ error: 'title cannot be empty' }, { status: 400 })
+      return errorCode('knowledge_field_empty', 400, {
+        message: 'title cannot be empty',
+        params: { field: 'title' },
+      })
     }
     if (content !== undefined && !content) {
-      return NextResponse.json({ error: 'content cannot be empty' }, { status: 400 })
+      return errorCode('knowledge_field_empty', 400, {
+        message: 'content cannot be empty',
+        params: { field: 'content' },
+      })
     }
 
     const update: Record<string, string> = {}
@@ -72,9 +83,13 @@ export async function PATCH(request: Request, { params }: Params) {
       .maybeSingle()
     if (error) {
       console.error('[ai/knowledge/[id] PATCH] error:', error)
-      return NextResponse.json({ error: 'Failed to update document' }, { status: 500 })
+      return errorCode('document_update_failed', 500, {
+        message: 'Failed to update document',
+      })
     }
-    if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    if (!updated) {
+      return errorCode('not_found', 404, { message: 'Not found' })
+    }
 
     if (content !== undefined) {
       const { key: embeddingsApiKey, corrupt } = await loadEmbeddingsKey(
@@ -123,7 +138,9 @@ export async function DELETE(_request: Request, { params }: Params) {
       .eq('id', id)
     if (error) {
       console.error('[ai/knowledge/[id] DELETE] error:', error)
-      return NextResponse.json({ error: 'Failed to delete document' }, { status: 500 })
+      return errorCode('document_delete_failed', 500, {
+        message: 'Failed to delete document',
+      })
     }
     return NextResponse.json({ success: true })
   } catch (err) {

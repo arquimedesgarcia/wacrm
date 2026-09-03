@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { loadEmbeddingsKey } from '@/lib/ai/config'
 import { ingestDocument } from '@/lib/ai/knowledge'
@@ -25,10 +26,9 @@ export async function POST() {
       .eq('account_id', accountId)
     if (error) {
       console.error('[ai/knowledge/reindex] fetch error:', error)
-      return NextResponse.json(
-        { error: 'Failed to load documents' },
-        { status: 500 },
-      )
+      return errorCode('documents_load_failed', 500, {
+        message: 'Failed to load documents',
+      })
     }
 
     const { key: embeddingsApiKey, corrupt } = await loadEmbeddingsKey(
@@ -43,8 +43,11 @@ export async function POST() {
         {
           success: false,
           reindexed: 0,
-          error:
-            'Your embeddings key could not be decrypted (check ENCRYPTION_KEY, then re-enter the key in Settings → AI Assistant). Nothing was reindexed.',
+          error: {
+            code: 'key_decrypt_failed',
+            message:
+              'Your embeddings key could not be decrypted (check ENCRYPTION_KEY, then re-enter the key in Settings → AI Assistant). Nothing was reindexed.',
+          },
         },
         { status: 200 },
       )
@@ -65,7 +68,11 @@ export async function POST() {
             success: false,
             reindexed,
             total: (docs ?? []).length,
-            error: `Reindexed ${reindexed}, then hit an error: ${message}`,
+            error: {
+              code: 'knowledge_reindex_failed',
+              message: `Reindexed ${reindexed}, then hit an error: ${message}`,
+              params: { reindexed },
+            },
           },
           { status: 200 },
         )

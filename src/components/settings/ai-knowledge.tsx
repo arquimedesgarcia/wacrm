@@ -15,6 +15,7 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { useTranslations } from 'next-intl';
+import { useApiError } from '@/features/i18n/use-api-error';
 
 interface DocSummary {
   id: string;
@@ -43,6 +44,22 @@ export function AiKnowledgeCard({
   const [reindexing, setReindexing] = useState(false);
   const loadedAccountIdRef = useRef<string | null>(null);
   const t = useTranslations('Settings.aiKnowledge');
+  const tError = useApiError();
+
+  // The API answers with the standard `{ error: { code, message?, params? } }`
+  // envelope; translate by `code` and only fall back to the local copy when
+  // the envelope is missing (e.g. an older deploy in front).
+  const toastError = useCallback(
+    (data: unknown, fallbackKey: string) => {
+      const err =
+        data && typeof data === 'object'
+          ? (data as { error?: { code?: string; params?: Record<string, string | number> } })
+              .error
+          : undefined;
+      toast.error(err?.code ? tError(err.code, err.params) : t(fallbackKey));
+    },
+    [t, tError]
+  );
 
   const fetchDocs = useCallback(async () => {
     setLoading(true);
@@ -50,13 +67,13 @@ export function AiKnowledgeCard({
       const res = await fetch('/api/ai/knowledge');
       const data = await res.json();
       if (res.ok) setDocs(data.documents ?? []);
-      else toast.error(data.error ?? t('loadFailed'));
+      else toastError(data, 'loadFailed');
     } catch {
       toast.error(t('loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t, toastError]);
 
   useEffect(() => {
     if (!accountId || loadedAccountIdRef.current === accountId) return;
@@ -75,7 +92,7 @@ export function AiKnowledgeCard({
       const res = await fetch(`/api/ai/knowledge/${id}`);
       const data = await res.json();
       if (!res.ok) {
-        toast.error(data.error ?? t('openFailed'));
+        toastError(data, 'openFailed');
         return;
       }
       setEditing(id);
@@ -116,7 +133,7 @@ export function AiKnowledgeCard({
         cancelEdit();
         await fetchDocs();
       } else {
-        toast.error(data.error ?? t('saveFailed'));
+        toastError(data, 'saveFailed');
       }
     } catch {
       toast.error(t('saveFailed'));
@@ -133,7 +150,7 @@ export function AiKnowledgeCard({
         setDocs((d) => d.filter((x) => x.id !== id));
       } else {
         const data = await res.json();
-        toast.error(data.error ?? t('removeFailed'));
+        toastError(data, 'removeFailed');
       }
     } catch {
       toast.error(t('removeFailed'));
@@ -148,7 +165,7 @@ export function AiKnowledgeCard({
       if (res.ok && data.success) {
         toast.success(t('reindexSuccess', { count: data.reindexed }));
       } else {
-        toast.error(data.error ?? t('reindexFailed'));
+        toastError(data, 'reindexFailed');
       }
     } catch {
       toast.error(t('reindexFailed'));

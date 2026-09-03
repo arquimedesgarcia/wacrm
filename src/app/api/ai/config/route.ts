@@ -4,15 +4,12 @@ import {
   requireRole,
   toErrorResponse,
 } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { checkRateLimit, rateLimitResponse, RATE_LIMITS } from '@/lib/rate-limit'
 import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
 import { AiError, type AiProvider } from '@/lib/ai/types'
-
-function bad(message: string) {
-  return NextResponse.json({ error: message }, { status: 400 })
-}
 
 /**
  * GET /api/ai/config
@@ -37,10 +34,9 @@ export async function GET() {
 
     if (error) {
       console.error('[ai/config GET] fetch error:', error)
-      return NextResponse.json(
-        { error: 'Failed to load AI configuration' },
-        { status: 500 },
-      )
+      return errorCode('ai_config_load_failed', 500, {
+        message: 'Failed to load AI configuration',
+      })
     }
 
     if (!data) return NextResponse.json({ configured: false })
@@ -75,14 +71,22 @@ export async function POST(request: Request) {
     if (!limit.success) return rateLimitResponse(limit)
 
     const body = await request.json().catch(() => null)
-    if (!body || typeof body !== 'object') return bad('Invalid request body')
+    if (!body || typeof body !== 'object') {
+      return errorCode('invalid_request_body', 400, {
+        message: 'Invalid request body',
+      })
+    }
 
     const provider = body.provider as AiProvider
     if (provider !== 'openai' && provider !== 'anthropic') {
-      return bad('provider must be "openai" or "anthropic"')
+      return errorCode('ai_provider_invalid', 400, {
+        message: 'provider must be "openai" or "anthropic"',
+      })
     }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
-    if (!model) return bad('model is required')
+    if (!model) {
+      return errorCode('model_required', 400, { message: 'model is required' })
+    }
 
     const systemPrompt =
       typeof body.system_prompt === 'string' && body.system_prompt.trim()
@@ -110,7 +114,11 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
         .eq('user_id', rawHandoff)
         .maybeSingle()
-      if (!member) return bad('handoff_agent_id must be a member of this account')
+      if (!member) {
+        return errorCode('handoff_agent_not_member', 400, {
+          message: 'handoff_agent_id must be a member of this account',
+        })
+      }
       handoffAgentId = rawHandoff
     }
 
@@ -139,10 +147,15 @@ export async function POST(request: Request) {
       try {
         apiKeyPlain = decrypt(existing.api_key)
       } catch {
-        return bad('Stored API key could not be decrypted — re-enter your key.')
+        return errorCode('key_decrypt_failed', 400, {
+          message:
+            'Stored API key could not be decrypted — re-enter your key.',
+        })
       }
     } else {
-      return bad('api_key is required')
+      return errorCode('api_key_required', 400, {
+        message: 'api_key is required',
+      })
     }
 
     // Only spend a provider round-trip when the credentials that affect
@@ -170,13 +183,12 @@ export async function POST(request: Request) {
         })
       } catch (err) {
         if (err instanceof AiError) {
-          return NextResponse.json(
-            { error: err.message, code: err.code },
-            { status: 400 },
-          )
+          return errorCode(err.code, 400, { message: err.message })
         }
         console.error('[ai/config POST] validation error:', err)
-        return bad('Could not validate the API key with the provider.')
+        return errorCode('ai_test_failed', 400, {
+          message: 'Could not validate the API key with the provider.',
+        })
       }
     }
 
@@ -187,13 +199,14 @@ export async function POST(request: Request) {
         await embedTexts(rawEmbeddingsKey, ['ping'])
       } catch (err) {
         if (err instanceof AiError) {
-          return NextResponse.json(
-            { error: `Embeddings key: ${err.message}`, code: err.code },
-            { status: 400 },
-          )
+          return errorCode(err.code, 400, {
+            message: `Embeddings key: ${err.message}`,
+          })
         }
         console.error('[ai/config POST] embeddings validation error:', err)
-        return bad('Could not validate the embeddings key.')
+        return errorCode('embeddings_key_invalid', 400, {
+          message: 'Could not validate the embeddings key.',
+        })
       }
     }
 
@@ -222,10 +235,9 @@ export async function POST(request: Request) {
         .eq('account_id', accountId)
       if (upErr) {
         console.error('[ai/config POST] update error:', upErr)
-        return NextResponse.json(
-          { error: 'Failed to save AI configuration' },
-          { status: 500 },
-        )
+        return errorCode('ai_config_save_failed', 500, {
+          message: 'Failed to save AI configuration',
+        })
       }
     } else {
       const { error: insErr } = await supabase.from('ai_configs').insert({
@@ -236,10 +248,9 @@ export async function POST(request: Request) {
       })
       if (insErr) {
         console.error('[ai/config POST] insert error:', insErr)
-        return NextResponse.json(
-          { error: 'Failed to save AI configuration' },
-          { status: 500 },
-        )
+        return errorCode('ai_config_save_failed', 500, {
+          message: 'Failed to save AI configuration',
+        })
       }
     }
 
@@ -264,10 +275,9 @@ export async function DELETE() {
       .eq('account_id', accountId)
     if (error) {
       console.error('[ai/config DELETE] error:', error)
-      return NextResponse.json(
-        { error: 'Failed to delete AI configuration' },
-        { status: 500 },
-      )
+      return errorCode('ai_config_delete_failed', 500, {
+        message: 'Failed to delete AI configuration',
+      })
     }
     return NextResponse.json({ success: true })
   } catch (err) {
