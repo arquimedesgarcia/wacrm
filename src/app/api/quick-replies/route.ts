@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentAccount, requireRole, toErrorResponse } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 
@@ -16,7 +17,11 @@ export async function GET() {
       .from('quick_replies')
       .select('*')
       .order('created_at', { ascending: false })
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (error) {
+      return errorCode('quick_replies_load_failed', 500, {
+        message: error.message,
+      })
+    }
     return NextResponse.json({ quick_replies: data ?? [] })
   } catch (err) {
     return toErrorResponse(err)
@@ -32,12 +37,14 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  if (!body) return errorCode('invalid_json', 400, { message: 'Invalid JSON' })
 
   const title = typeof body.title === 'string' ? body.title.trim() : ''
   const kind = body.kind === 'interactive' ? 'interactive' : 'text'
   if (!title) {
-    return NextResponse.json({ error: 'title is required' }, { status: 400 })
+    return errorCode('quick_reply_title_required', 400, {
+      message: 'title is required',
+    })
   }
 
   let content_text: string | null = null
@@ -46,16 +53,15 @@ export async function POST(request: Request) {
   if (kind === 'interactive') {
     const result = validateInteractivePayload(body.interactive_payload)
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: 400 })
+      return errorCode('interactive_invalid', 400, { message: result.error })
     }
     interactive_payload = body.interactive_payload
   } else {
     const text = typeof body.content_text === 'string' ? body.content_text : ''
     if (!text.trim()) {
-      return NextResponse.json(
-        { error: 'content_text is required for text quick replies' },
-        { status: 400 },
-      )
+      return errorCode('quick_reply_content_required', 400, {
+        message: 'content_text is required for text quick replies',
+      })
     }
     content_text = text
   }
@@ -74,7 +80,7 @@ export async function POST(request: Request) {
     .single()
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return errorCode('quick_reply_create_failed', 500, { message: error.message })
   }
   return NextResponse.json({ quick_reply: data }, { status: 201 })
 }

@@ -21,6 +21,7 @@ import { NextResponse } from "next/server";
 import type { PostgrestError } from "@supabase/supabase-js";
 
 import { hashInviteToken } from "@/lib/auth/invitations";
+import { errorCode } from "@/lib/api/v1/respond";
 import {
   checkRateLimit,
   rateLimitResponse,
@@ -36,21 +37,25 @@ function getClientIp(request: Request): string {
   return "unknown";
 }
 
+// The wire carries stable codes only; the RPC's English message is
+// kept as a diagnostic `message` for logs, and the client renders
+// the localized copy from the error catalogue.
 function rpcErrorToResponse(err: PostgrestError): NextResponse {
   if (err.code === "42501") {
-    return NextResponse.json({ error: err.message }, { status: 401 });
+    return errorCode("unauthorized", 401, { message: err.message });
   }
   if (err.code === "22023") {
-    return NextResponse.json({ error: err.message }, { status: 400 });
+    return errorCode("invitation_redeem_failed", 400, {
+      message: err.message,
+    });
   }
   if (err.code === "23505") {
-    return NextResponse.json({ error: err.message }, { status: 409 });
+    return errorCode("invitation_conflict", 409, { message: err.message });
   }
   console.error("[redeem] unexpected RPC error:", err);
-  return NextResponse.json(
-    { error: "Failed to redeem invitation" },
-    { status: 500 },
-  );
+  return errorCode("invitation_redeem_failed", 500, {
+    message: "Failed to redeem invitation",
+  });
 }
 
 export async function POST(
@@ -63,10 +68,9 @@ export async function POST(
 
   const { token } = await params;
   if (!token || typeof token !== "string") {
-    return NextResponse.json(
-      { error: "Missing invitation token" },
-      { status: 400 },
-    );
+    return errorCode("invitation_token_required", 400, {
+      message: "Missing invitation token",
+    });
   }
 
   const supabase = await createClient();
@@ -78,7 +82,7 @@ export async function POST(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return errorCode("unauthorized", 401, { message: "Unauthorized" });
   }
 
   const { data: accountId, error } = await supabase.rpc("redeem_invitation", {

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireRole, toErrorResponse } from '@/lib/auth/account'
+import { errorCode } from '@/lib/api/v1/respond'
 import { supabaseAdmin } from '@/lib/automations/admin-client'
 import { validateInteractivePayload } from '@/lib/whatsapp/interactive'
 
@@ -21,12 +22,16 @@ export async function PATCH(
   }
 
   const body = await request.json().catch(() => null)
-  if (!body) return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 })
+  if (!body) return errorCode('invalid_json', 400, { message: 'Invalid JSON' })
 
   const update: Record<string, unknown> = {}
   if (typeof body.title === 'string') {
     const title = body.title.trim()
-    if (!title) return NextResponse.json({ error: 'title cannot be empty' }, { status: 400 })
+    if (!title) {
+      return errorCode('quick_reply_title_required', 400, {
+        message: 'title cannot be empty',
+      })
+    }
     update.title = title
   }
 
@@ -35,21 +40,24 @@ export async function PATCH(
   // otherwise a switched row keeps a stale payload the picker mis-routes on.
   if ('kind' in body) {
     if (body.kind !== 'text' && body.kind !== 'interactive') {
-      return NextResponse.json({ error: 'kind must be "text" or "interactive"' }, { status: 400 })
+      return errorCode('quick_reply_kind_invalid', 400, {
+        message: 'kind must be "text" or "interactive"',
+      })
     }
     update.kind = body.kind
     if (body.kind === 'interactive') {
       const result = validateInteractivePayload(body.interactive_payload)
-      if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 })
+      if (!result.ok) {
+        return errorCode('interactive_invalid', 400, { message: result.error })
+      }
       update.interactive_payload = body.interactive_payload
       update.content_text = null
     } else {
       const text = typeof body.content_text === 'string' ? body.content_text : ''
       if (!text.trim()) {
-        return NextResponse.json(
-          { error: 'content_text is required for text quick replies' },
-          { status: 400 },
-        )
+        return errorCode('quick_reply_content_required', 400, {
+          message: 'content_text is required for text quick replies',
+        })
       }
       update.content_text = text
       update.interactive_payload = null
@@ -61,7 +69,7 @@ export async function PATCH(
       if (body.interactive_payload != null) {
         const result = validateInteractivePayload(body.interactive_payload)
         if (!result.ok) {
-          return NextResponse.json({ error: result.error }, { status: 400 })
+          return errorCode('interactive_invalid', 400, { message: result.error })
         }
       }
       update.interactive_payload = body.interactive_payload ?? null
@@ -77,7 +85,9 @@ export async function PATCH(
     .update(update)
     .eq('id', id)
     .eq('account_id', ctx.accountId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    return errorCode('quick_reply_update_failed', 500, { message: error.message })
+  }
   return NextResponse.json({ ok: true })
 }
 
@@ -98,6 +108,8 @@ export async function DELETE(
     .delete()
     .eq('id', id)
     .eq('account_id', ctx.accountId)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    return errorCode('quick_reply_delete_failed', 500, { message: error.message })
+  }
   return NextResponse.json({ ok: true })
 }
