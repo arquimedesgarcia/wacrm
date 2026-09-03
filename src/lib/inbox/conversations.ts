@@ -10,8 +10,8 @@ export const CONVERSATION_SELECT =
   "*, contact:contacts(*, contact_tags(tags(*)))";
 
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
-type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
-type RawConversation = Omit<Conversation, "contact"> & {
+export type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
+export type RawConversation = Omit<Conversation, "contact"> & {
   contact?: RawContact | null;
 };
 
@@ -68,4 +68,70 @@ export function matchesContactFilters(
   }
 
   return true;
+}
+
+/**
+ * Whether a conversation counts as active for the default Inbox view.
+ * Closed conversations are excluded unless the user explicitly asks for them.
+ */
+export function isActiveConversation(conversation: Conversation): boolean {
+  return conversation.status === "open" || conversation.status === "pending";
+}
+
+export interface InboxFilters extends ContactFilters {
+  statusFilter: Conversation["status"] | "all";
+  search: string;
+  requireMessages: boolean;
+  requireActive: boolean;
+}
+
+/**
+ * Single predicate used by the Inbox to decide which conversations appear.
+ * It combines status, activity, presence of messages, contact filters and
+ * free-text search so the list can be filtered on the client without loading
+ * contacts that have no messages.
+ */
+export function matchesInboxFilters(
+  conversation: Conversation,
+  filters: InboxFilters,
+): boolean {
+  if (filters.requireActive && !isActiveConversation(conversation)) {
+    return false;
+  }
+
+  if (filters.statusFilter !== "all" && conversation.status !== filters.statusFilter) {
+    return false;
+  }
+
+  if (
+    filters.requireMessages &&
+    (!conversation.last_message_at || !conversation.last_message_text)
+  ) {
+    return false;
+  }
+
+  if (!matchesContactFilters(conversation, filters)) {
+    return false;
+  }
+
+  const q = filters.search.trim().toLowerCase();
+  if (q) {
+    const name = conversation.contact?.name?.toLowerCase() ?? "";
+    const phone = conversation.contact?.phone?.toLowerCase() ?? "";
+    const lastMsg = conversation.last_message_text?.toLowerCase() ?? "";
+    if (!name.includes(q) && !phone.includes(q) && !lastMsg.includes(q)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/**
+ * Sortable timestamp for a conversation. Uses the last message time when
+ * available so the list order reflects real activity; falls back to creation
+ * time for empty conversations when they are shown.
+ */
+export function conversationSortKey(conversation: Conversation): string {
+  return conversation.last_message_at ?? conversation.created_at;
 }

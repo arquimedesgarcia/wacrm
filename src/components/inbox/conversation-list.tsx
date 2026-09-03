@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   CONVERSATION_SELECT,
-  matchesContactFilters,
+  matchesInboxFilters,
   normalizeConversations,
+  type RawConversation,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
@@ -94,10 +95,16 @@ export function ConversationList({
     const supabase = createClient();
     let cancelled = false;
 
+    // Fetch conversations with at least one message, limited to open/pending.
+    // The status filter is duplicated on the server as a safety net so the
+    // list never returns closed / empty conversations for the default view,
+    // even if the client filter is bypassed or a stale cache is used.
     (async () => {
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
+        .not("last_message_at", "is", null)
+        .in("status", ["open", "pending"])
         .order("last_message_at", { ascending: false });
 
       if (cancelled) return;
@@ -114,7 +121,7 @@ export function ConversationList({
         return;
       }
 
-      onConversationsLoadedRef.current(normalizeConversations(data ?? []));
+      onConversationsLoadedRef.current(normalizeConversations((data ?? []) as RawConversation[]));
       setLoading(false);
     })();
 
@@ -159,35 +166,21 @@ export function ConversationList({
   }, [tags]);
 
   const filtered = useMemo(() => {
-    let result = conversations;
+    const requireMessages = filter !== "all" && filter !== "closed";
+    const requireActive = filter !== "closed";
 
-    if (filter === "unread") {
-      result = result.filter((c) => c.unread_count > 0);
-    } else if (filter !== "all") {
-      result = result.filter((c) => c.status === filter);
-    }
-
-    // Contact-based filters (tags via OR logic, exact company match).
-    if (selectedTagIds.length > 0 || selectedCompany !== null) {
-      result = result.filter((c) =>
-        matchesContactFilters(c, {
+    return conversations
+      .filter((c) =>
+        matchesInboxFilters(c, {
+          statusFilter: filter === "unread" ? "all" : filter,
           tagIds: selectedTagIds,
           company: selectedCompany,
+          search,
+          requireMessages,
+          requireActive,
         })
-      );
-    }
-
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      result = result.filter((c) => {
-        const name = c.contact?.name?.toLowerCase() ?? "";
-        const phone = c.contact?.phone?.toLowerCase() ?? "";
-        const lastMsg = c.last_message_text?.toLowerCase() ?? "";
-        return name.includes(q) || phone.includes(q) || lastMsg.includes(q);
-      });
-    }
-
-    return result;
+      )
+      .filter((c) => (filter === "unread" ? c.unread_count > 0 : true));
   }, [conversations, filter, search, selectedTagIds, selectedCompany]);
 
   const toggleTag = useCallback((id: string) => {
