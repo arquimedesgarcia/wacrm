@@ -295,3 +295,66 @@ describe('Evolution webhook: inbound image media', () => {
     expect(inserted?.content_text).toBe('still text');
   });
 });
+
+describe('Evolution webhook: fromMe reply written on the phone', () => {
+  it('creates an agent message + bumps summary without unread', async () => {
+    stubEvolutionFetch();
+
+    await makePostRequest({
+      event: 'MESSAGES_UPSERT',
+      instance: 'waCRM',
+      data: {
+        messages: [
+          {
+            key: {
+              remoteJid: '15551234567@s.whatsapp.net',
+              fromMe: true,
+              id: 'PHONE-REPLY-1',
+            },
+            message: { conversation: 'Replied from my phone' },
+            messageTimestamp: 1700000000,
+          },
+        ],
+      },
+    });
+
+    const inserted = h.state.messagesInserts.find((m) => m.message_id === 'PHONE-REPLY-1');
+    expect(inserted).toBeDefined();
+    expect(inserted?.sender_type).toBe('agent');
+    expect(inserted?.content_text).toBe('Replied from my phone');
+
+    // Summary refreshed, but NOT via the inbound RPC (which bumps unread).
+    expect(h.state.rpcCalls.some((c) => c.name === 'bump_conversation_on_outbound')).toBe(true);
+    expect(h.state.rpcCalls.some((c) => c.name === 'bump_conversation_on_inbound')).toBe(false);
+  });
+
+  it('does not create a duplicate when an existing outbound row exists', async () => {
+    stubEvolutionFetch();
+    h.state.existingMessage = { message_id: 'DUP-1', conversation_id: 'conv-1' };
+
+    const request = new Request('https://wacrm.example.com/api/whatsapp/evolution/webhook', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: 'webhook-secret' },
+      body: JSON.stringify({
+        event: 'MESSAGES_UPSERT',
+        instance: 'waCRM',
+        data: {
+          messages: [
+            {
+              key: {
+                remoteJid: '15551234567@s.whatsapp.net',
+                fromMe: true,
+                id: 'DUP-1',
+              },
+              message: { conversation: 'dup' },
+              messageTimestamp: 1700000000,
+            },
+          ],
+        },
+      }),
+    });
+
+    await makePostRequest(JSON.parse(await request.text()));
+    expect(h.state.messagesInserts.filter((m) => m.message_id === 'DUP-1').length).toBe(0);
+  });
+});

@@ -247,8 +247,14 @@ async function processEvolutionWebhook(
       if (!messageEvent.senderPhone) continue;
       if (messageEvent.isFromMe) {
         // Outbound echoes from a linked device: update existing outbound
-        // row if present, but do not create a new customer message.
-        await handleFromMeEcho(messageEvent);
+        // row if present, otherwise create the message locally (it was
+        // written on the linked phone itself). Never treated as inbound.
+        await handleFromMeEcho(
+          messageEvent,
+          config,
+          accountId,
+          configOwnerUserId
+        );
         continue;
       }
 
@@ -441,13 +447,13 @@ async function insertInboundMessage(
     .from('messages')
     .insert({
       conversation_id: conversationId,
-      sender_type: 'customer',
+      sender_type: event.isFromMe ? 'agent' : 'customer',
       content_type: event.contentType,
       content_text: event.contentText,
       media_url: mediaUrl,
       media_type: mediaType,
       message_id: providerMessageId,
-      status: 'delivered',
+      status: event.isFromMe ? 'sent' : 'delivered',
       created_at: event.timestamp,
     })
     .select('id')
@@ -471,12 +477,17 @@ async function insertInboundMessage(
   return (data.id as string) ?? null;
 }
 
-async function handleFromMeEcho(event: NormalizedInboundEvent) {
-  // If we already have an outbound message with this provider id, mark
-  // it as delivered/read. Otherwise ignore the echo.
+async function handleFromMeEcho(
+  event: NormalizedInboundEvent,
+  config: Record<string, unknown>,
+  accountId: string,
+  configOwnerUserId: string
+) {
+  // If we already have a message with this provider id (an outbound send
+  // that originated in WaCRM), treat the echo as a status update only.
   const { data: existing } = await supabaseAdmin()
     .from('messages')
-    .select('id')
+    .select('id, conversation_id')
     .eq('message_id', event.providerMessageId)
     .maybeSingle();
 
@@ -485,7 +496,67 @@ async function handleFromMeEcho(event: NormalizedInboundEvent) {
       .from('messages')
       .update({ status: 'delivered' })
       .eq('id', existing.id);
+    return;
   }
+
+  // A fromMe message with no local row means it was written on the linked
+  // phone itself. Resolve the recipient, find-or-create the conversation,
+  // persist it as an outbound (agent) message, and bump the summary — but
+  // do NOT count it as unread or fire inbound automations/flows/AI.
+  const recipientPhone = normalizeInboundPhone(event.senderPhone);
+  if (!recipientPhone || !isValidE164(recipientPhone)) {
+    console.warn('[evolution webhook] fromMe echo: unresolvable recipient', event.senderPhone);
+    return;
+  }
+
+  const contactOutcome = await findOrCreateContact(
+    accountId,
+    configOwnerUserId,
+    recipientPhone,
+    event.displayName
+  );
+  if (!contactOutcome) return;
+  const convOutcome = await findOrCreateConversation(
+    accountId,
+    configOwnerUserId,
+    contactOutcome.contact.id
+  );
+  if (!convOutcome) return;
+
+  // Resolve durable media (images/video sent from the phone).
+  let phoneMediaUrl: string | null = event.mediaUrl;
+  let phoneMediaType: string | null = event.mediaType;
+  if (event.contentType === 'image' || event.contentType === 'video') {
+    try {
+      const resolved = await resolveEvolutionMessageMedia({
+        config: config as unknown as WhatsAppConfig,
+        rawPayload: (event.rawPayload ?? {}) as Record<string, unknown>,
+        accountId,
+        storage: supabaseAdmin().storage,
+      });
+      if (resolved.mediaUrl) {
+        phoneMediaUrl = resolved.mediaUrl;
+        phoneMediaType = resolved.mediaType;
+      }
+    } catch (err) {
+      console.warn('[evolution webhook] fromMe media resolve failed:', err);
+    }
+  }
+
+  const messageId = await insertInboundMessage(
+    event,
+    String(convOutcome.conversation.id),
+    phoneMediaUrl,
+    phoneMediaType
+  );
+  if (!messageId) return;
+
+  // Update the conversation summary WITHOUT bumping unread_count.
+  await bumpConversationSummaryOnly(
+    supabaseAdmin(),
+    String(convOutcome.conversation.id),
+    event.contentText
+  );
 }
 
 async function handleStatusUpdate(event: NormalizedStatusEvent) {
