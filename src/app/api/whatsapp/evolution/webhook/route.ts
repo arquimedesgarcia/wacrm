@@ -18,6 +18,7 @@ import { NextResponse, after } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { decrypt } from '@/lib/whatsapp/encryption';
 import { EvolutionAdapter } from '@/lib/whatsapp/providers/evolution-adapter';
+import { resolveEvolutionMessageMedia } from '@/lib/whatsapp/providers/evolution-media';
 import {
   extractInstanceName,
   sanitizeWebhookPayload,
@@ -34,6 +35,7 @@ import type {
   NormalizedInboundEvent,
   NormalizedStatusEvent,
 } from '@/lib/whatsapp/providers/types';
+import type { WhatsAppConfig } from '@/types';
 
 export const maxDuration = 60;
 
@@ -105,7 +107,8 @@ export async function POST(request: Request) {
       await processEvolutionWebhook(
         sanitizedPayload,
         accountId,
-        config.user_id as string
+        config.user_id as string,
+        config
       );
     } catch (error) {
       console.error('[evolution webhook] processing error:', error);
@@ -222,7 +225,8 @@ async function updateConnectionStatus(accountId: string, payload: unknown) {
 async function processEvolutionWebhook(
   payload: unknown,
   accountId: string,
-  configOwnerUserId: string
+  configOwnerUserId: string,
+  config: Record<string, unknown>
 ) {
   // Sync the persisted config status before normalization so the inbox
   // banner reflects the real Evolution state even if the user has not
@@ -248,7 +252,7 @@ async function processEvolutionWebhook(
         continue;
       }
 
-      await handleInboundMessage(messageEvent, accountId, configOwnerUserId);
+      await handleInboundMessage(messageEvent, accountId, configOwnerUserId, config);
     } catch (err) {
       console.error('[evolution webhook] event processing error:', err);
     }
@@ -262,7 +266,8 @@ async function processEvolutionWebhook(
 async function handleInboundMessage(
   event: NormalizedInboundEvent,
   accountId: string,
-  configOwnerUserId: string
+  configOwnerUserId: string,
+  config: Record<string, unknown>
 ) {
   const phone = normalizeInboundPhone(event.senderPhone);
   if (!phone) {
@@ -313,8 +318,35 @@ async function handleInboundMessage(
     id: String(conversation.id),
   });
 
-  // 5. Idempotent insert.
-  const messageId = await insertInboundMessage(event, String(conversation.id));
+  // 5. Resolve durable media (Evolution delivers metadata only; the
+  //    bytes live behind the instance). Best-effort: a failed mirror
+  //    leaves mediaUrl null but we still persist the text/caption row.
+  let mediaUrl: string | null = event.mediaUrl;
+  let mediaType: string | null = event.mediaType;
+  if (event.contentType === 'image' || event.contentType === 'video') {
+    try {
+      const resolved = await resolveEvolutionMessageMedia({
+        config: config as unknown as WhatsAppConfig,
+        rawPayload: (event.rawPayload ?? {}) as Record<string, unknown>,
+        accountId,
+        storage: supabaseAdmin().storage,
+      });
+      if (resolved.mediaUrl) {
+        mediaUrl = resolved.mediaUrl;
+        mediaType = resolved.mediaType;
+      }
+    } catch (err) {
+      console.warn('[evolution webhook] media resolve failed:', err);
+    }
+  }
+
+  // 6. Idempotent insert.
+  const messageId = await insertInboundMessage(
+    event,
+    String(conversation.id),
+    mediaUrl,
+    mediaType
+  );
   if (!messageId) return;
 
   // 6. Bump conversation summary.
@@ -385,7 +417,9 @@ async function handleInboundMessage(
 
 async function insertInboundMessage(
   event: NormalizedInboundEvent,
-  conversationId: string
+  conversationId: string,
+  mediaUrl: string | null = event.mediaUrl,
+  mediaType: string | null = event.mediaType
 ): Promise<string | null> {
   const providerMessageId = event.providerMessageId;
 
@@ -410,8 +444,8 @@ async function insertInboundMessage(
       sender_type: 'customer',
       content_type: event.contentType,
       content_text: event.contentText,
-      media_url: event.mediaUrl,
-      media_type: event.mediaType,
+      media_url: mediaUrl,
+      media_type: mediaType,
       message_id: providerMessageId,
       status: 'delivered',
       created_at: event.timestamp,
@@ -646,6 +680,35 @@ async function bumpConversation(
       .from('conversations')
       .update({
         unread_count: 1,
+        last_message_text: lastMessageText ?? '',
+        last_message_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', conversationId);
+  }
+}
+
+/**
+ * Update a conversation's last-message summary WITHOUT incrementing
+ * unread_count. Used for messages written on the linked phone itself
+ * (fromMe echoes with no existing local row): they are outbound from the
+ * account's perspective, so they must not appear as unread customer
+ * messages. Falls back to a plain summary update if the RPC is missing.
+ */
+async function bumpConversationSummaryOnly(
+  db: ReturnType<typeof supabaseAdmin>,
+  conversationId: string,
+  lastMessageText: string | null
+) {
+  try {
+    await db.rpc('bump_conversation_on_outbound', {
+      p_conversation_id: conversationId,
+      p_last_message_text: lastMessageText ?? '',
+    });
+  } catch {
+    await db
+      .from('conversations')
+      .update({
         last_message_text: lastMessageText ?? '',
         last_message_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

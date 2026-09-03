@@ -519,6 +519,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
         (messageContent.messageTimestamp as string | number | undefined)
     );
 
+    const mediaContent = messageContent as Record<string, { caption?: unknown }>;
     const conversationContent = (messageContent.conversation ?? {}) as Record<
       string,
       unknown
@@ -526,7 +527,14 @@ export class EvolutionAdapter implements WhatsAppProvider {
     const text =
       typeof conversationContent === 'string'
         ? conversationContent
-        : String(conversationContent.text ?? messageContent.text ?? '');
+        : String(
+            conversationContent.text ??
+              messageContent.text ??
+              mediaContent.imageMessage?.caption ??
+              mediaContent.videoMessage?.caption ??
+              mediaContent.documentMessage?.caption ??
+              '',
+          );
 
     const type = normalizeContentType(
       messageContent.imageMessage || messageContent.stickerMessage
