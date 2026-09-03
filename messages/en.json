@@ -38,7 +38,8 @@
     "defaultAvatar": "Avatar",
     "menuProfile": "Profile",
     "menuSettings": "Settings",
-    "menuSignOut": "Sign out"
+    "menuSignOut": "Sign out",
+    "primaryNavAria": "Primary"
   },
   "Header": {
     "dashboard": "Dashboard",
@@ -342,7 +343,12 @@
       "toastFailedDelete": "Failed to delete contact",
       "toastDeleted": "Contact deleted",
       "toastBulkFailedDelete": "Failed to delete contacts",
-      "toastBulkDeleted": "{count} contacts deleted"
+      "toastBulkDeleted": "{count} contacts deleted",
+      "accessibility": {
+        "filterByTag": "Filter by {tag}",
+        "removeTagFilter": "Remove {tag} filter",
+        "selectAllPage": "Select all contacts on this page"
+      }
     },
     "form": {
       "addTitle": "Add Contact",
@@ -385,9 +391,9 @@
         "custom": "Custom Fields",
         "deals": "Deals",
         "tags": "Tags",
-      "noTags": "No tags",
-      "noDeals": "No deals",
-      "addNotePlaceholder": "Add a note..."
+        "noTags": "No tags",
+        "noDeals": "No deals",
+        "addNotePlaceholder": "Add a note..."
       },
       "actions": {
         "edit": "Edit",
@@ -631,7 +637,8 @@
         "date": "Date"
       },
       "errorLoad": "Failed to load broadcasts",
-      "retry": "Retry"
+      "retry": "Retry",
+      "inProgressAria": "Broadcast in progress"
     },
     "status": {
       "draft": "Draft",
@@ -833,7 +840,9 @@
         "updateError": "Failed to update",
         "duplicateError": "Failed to duplicate",
         "deleteError": "Failed to delete"
-      }
+      },
+      "openMenuAria": "Open menu",
+      "activeAria": "active"
     },
     "edit": {
       "loading": "Loading...",
@@ -917,7 +926,6 @@
       "schedule": "Schedule",
       "scheduleHint": "Cron expression (e.g. 0 9 * * 1-5)",
       "active": "Active",
-      "activeAria": "Active",
       "save": "Save",
       "saveDraft": "Save Draft",
       "untitled": "Untitled automation",
@@ -1012,7 +1020,9 @@
         "matchWordHint": "Matches the keyword only as a standalone word, so \"k\" no longer fires on \"thanks\". Best for short keywords in space-separated languages; use Contains for languages written without spaces.",
         "matchExact": "Exact",
         "closeConversationHint": "Sets the conversation status to \"closed\". No configuration needed."
-      }
+      },
+      "moveStepUpAria": "Move up",
+      "moveStepDownAria": "Move down"
     }
   },
   "Flows": {
@@ -1156,7 +1166,9 @@
         "filenamePlaceholder": "invoice.pdf",
         "advanceAfterSending": "After sending, advance to",
         "pickNextNode": "Pick a next node…",
-        "none": "— None —"
+        "none": "— None —",
+        "fileTooLarge": "File is too large (max {size} MB).",
+        "removeSectionAria": "Remove section"
       },
       "categories": {
         "messaging": "Messaging",
@@ -1204,19 +1216,106 @@
           "label": "End",
           "blurb": "Ends the flow"
         }
-      }
+      },
+      "editorViewAria": "Editor view"
+    },
+    "header": {
+      "backToFlows": "Back to Flows",
+      "flowName": "Flow name",
+      "flowNameAria": "Flow name",
+      "edited": "Edited",
+      "unsavedChanges": "Unsaved changes — hit Save to persist",
+      "runs": "Runs",
+      "delete": "Delete",
+      "pause": "Pause",
+      "activate": "Activate",
+      "save": "Save",
+      "fixIssuesBeforeActivating": "Fix the issues below before activating",
+      "statusDraft": "Draft",
+      "statusActive": "Active",
+      "statusArchived": "Archived",
+      "descriptionPlaceholder": "Add a short description (internal — customers don't see this)",
+      "descriptionAria": "Flow description"
+    },
+    "edges": {
+      "next": "Next",
+      "true": "true",
+      "false": "false"
     },
     "validation": {
       "noIssues": "No issues. Ready to activate.",
       "summary": "{errorCount} {errorCount, plural, =1 {error} other {errors}}, {warningCount} {warningCount, plural, =1 {warning} other {warnings}}",
-      "jumpToNode": "Jump to node {key}"
+      "jumpToNode": "Jump to node {key}",
+      "issues": {
+        "flowNameRequired": "Flow name is required.",
+        "entryNodeRequired": "Pick an entry node before activating.",
+        "noNodes": "A flow needs at least one node before activation.",
+        "entryNodeMissing": "Entry node \"{key}\" doesn't exist.",
+        "duplicateNodeKey": "Duplicate node_key \"{key}\".",
+        "unreachableNode": "Node \"{key}\" is unreachable from the entry node.",
+        "startNoNext": "Start node must point to a next node.",
+        "startBadNext": "Start points to non-existent node \"{key}\".",
+        "sendMessageNoText": "Send-message node needs a text body.",
+        "sendMessageNoNext": "Send-message node must point to a next node.",
+        "sendMessageBadNext": "Send-message points to non-existent node \"{key}\".",
+        "mediaNoType": "Send-media node needs a media type (image, video, or document).",
+        "mediaNoFile": "Send-media node needs a file (upload one before activating).",
+        "captionTooLong": "Caption exceeds {limit} chars (WhatsApp limit).",
+        "mediaNoNext": "Send-media node must point to a next node.",
+        "mediaBadNext": "Send-media points to non-existent node \"{key}\".",
+        "buttonsNoText": "Send-buttons node needs a text body.",
+        "buttonsNoButtons": "Send-buttons needs at least one button.",
+        "buttonsTooMany": "WhatsApp allows at most {limit} buttons per message.",
+        "buttonNoId": "Button {index} needs a reply id.",
+        "buttonDuplicateId": "Duplicate button reply id \"{key}\".",
+        "buttonNoTitle": "Button {index} needs a title.",
+        "buttonTitleTooLong": "Button {index} title is over {limit} chars (WhatsApp limit).",
+        "buttonNoNext": "Button {index} needs a next node.",
+        "buttonBadNext": "Button {index} points to non-existent node \"{key}\".",
+        "listNoText": "Send-list node needs a text body.",
+        "listNoButtonLabel": "Send-list needs a button label (the tap-to-expand text).",
+        "listNoRows": "Send-list needs at least one row.",
+        "listTooManyRows": "Send-list allows at most {limit} rows total across sections.",
+        "rowNoId": "Row {index} in section {section} needs a reply id.",
+        "rowDuplicateId": "Duplicate list row id \"{key}\".",
+        "rowNoTitle": "Row {index} needs a title.",
+        "rowTitleTooLong": "Row {index} title exceeds {limit} chars.",
+        "rowDescTooLong": "Row {index} description exceeds {limit} chars.",
+        "rowNoNext": "Row {index} needs a next node.",
+        "rowBadNext": "Row {index} points to non-existent node \"{key}\".",
+        "collectNoPrompt": "Collect-input needs a prompt to send the customer.",
+        "collectNoVarKey": "Collect-input needs a var_key to store the answer under.",
+        "collectBadVarKey": "var_key \"{key}\" must be alphanumeric+underscore and start with a letter or underscore.",
+        "collectNoNext": "Collect-input must point to a next node.",
+        "collectBadNext": "Collect-input points to non-existent node \"{key}\".",
+        "conditionNoSubject": "Condition needs a subject (var / tag / contact_field).",
+        "conditionNoSubjectKey": "Condition needs a subject_key (var name, tag id, or field name).",
+        "conditionNoOperator": "Condition needs an operator.",
+        "conditionEmptyValue": "Operator \"{operator}\" usually expects a comparison value — empty value will only match empty subjects.",
+        "conditionNoBranch": "Condition needs a node for the \"{branch}\" branch.",
+        "conditionBadBranch": "Condition's \"{branch}\" points to non-existent node \"{key}\".",
+        "tagNoMode": "Set-tag needs a mode (add or remove).",
+        "tagNoTag": "Set-tag needs a tag to apply.",
+        "tagNoNext": "Set-tag must point to a next node.",
+        "tagBadNext": "Set-tag points to non-existent node \"{key}\".",
+        "unknownNodeType": "Unknown node type \"{type}\".",
+        "keywordNoKeywords": "Keyword triggers need at least one keyword.",
+        "keywordBlank": "{count} keyword {count, plural, =1 {is} other {are}} blank — they won't match anything."
+      }
     },
     "editorState": {
       "saved": "Saved.",
       "fixIssues": "Fix the issues below before activating.",
       "statusActivated": "Flow activated.",
       "statusArchived": "Archived.",
-      "statusDraft": "Saved as draft."
+      "statusDraft": "Saved as draft.",
+      "saveFailed": "Save failed: {status}",
+      "saveFailedSimple": "Save failed",
+      "statusUpdateFailed": "Status update failed: {status}",
+      "statusUpdateFailedSimple": "Status update failed",
+      "deleteConfirm": "Delete \"{name}\"? Any active runs end immediately. This can't be undone.",
+      "deleteFailed": "Delete failed: {status}",
+      "deleteFailedSimple": "Delete failed"
     },
     "summary": {
       "options": "{count} {count, plural, =1 {option} other {options}}",
@@ -1235,6 +1334,86 @@
       "modeRemove": "Remove",
       "tagPicked": "{mode} tag {tag}…",
       "tagNone": "{mode} tag (none picked)"
+    }
+  },
+  "Interactive": {
+    "builder": {
+      "titleButtons": "Reply buttons",
+      "titleList": "List message",
+      "bodyText": "Body text",
+      "placeholderBody": "Hi! Thanks for reaching out…",
+      "headerText": "Header (optional, max 60 chars)",
+      "footerText": "Footer (optional, max 60 chars)",
+      "buttons": {
+        "columnTitle": "Visible title (≤20 chars)",
+        "columnReplyId": "Reply ID (internal)",
+        "buttonAdd": "Add button",
+        "buttonRemove": "Remove button",
+        "buttonUp": "Move button up",
+        "buttonDown": "Move button down",
+        "countLabel": "Buttons ({count}/{max})",
+        "replyIdPlaceholder": "id",
+        "labelPlaceholder": "Button label"
+      },
+      "list": {
+        "buttonLabel": "Tap-to-expand button label (≤20 chars)",
+        "sectionTitle": "Section {count} title (optional)",
+        "rowTitle": "Row title (≤24 chars)",
+        "rowDescription": "Description (optional, ≤72 chars)",
+        "rowReplyId": "Reply ID (internal)",
+        "addRow": "Add row",
+        "addSection": "Add section",
+        "sectionRemove": "Remove section",
+        "rowRemove": "Remove row",
+        "rowUp": "Move row up",
+        "rowDown": "Move row down",
+        "rowsHelp": "Rows (1–10 total across all sections)",
+        "noRows": "No rows yet.",
+        "noRowsHint": "Add a section, then a row to get started.",
+        "rowsLabel": "Rows ({count}/{max})",
+        "sectionTitlePlaceholder": "Section title (optional)",
+        "rowTitlePlaceholder": "Row title",
+        "rowDescriptionPlaceholder": "Description (optional)",
+        "replyIdPlaceholder": "id"
+      },
+      "showReplyIds": "Show reply IDs (advanced)",
+      "previewLabel": "Preview"
+    },
+    "preview": {
+      "noText": "Set body text to preview",
+      "noBody": "No body text",
+      "pickTemplate": "Pick a template…",
+      "noUrl": "Select a URL",
+      "next": "Next",
+      "true": "true",
+      "false": "false",
+      "fallbackBody": "Message body…",
+      "fallbackButton": "Button",
+      "fallbackMenu": "Menu"
+    },
+    "validation": {
+      "bodyRequired": "Interactive message body text is required.",
+      "bodyTooLong": "Body text exceeds the {limit}-character limit.",
+      "headerTooLong": "Header exceeds the {limit}-character limit.",
+      "footerTooLong": "Footer exceeds the {limit}-character limit.",
+      "buttonIdRequired": "Every button needs an id.",
+      "buttonIdDuplicate": "Duplicate button id \"{id}\".",
+      "buttonLabelRequired": "Every button needs a label.",
+      "buttonLabelTooLong": "Button label \"{title}\" exceeds the {limit}-character limit.",
+      "tooManyButtons": "A reply-button message allows at most {limit} buttons.",
+      "listButtonLabelRequired": "The list needs a button label.",
+      "listButtonLabelTooLong": "List button label exceeds the {limit}-character limit.",
+      "sectionRequired": "Add at least one list section.",
+      "tooManySections": "A list allows at most {limit} sections.",
+      "sectionRowsRequired": "Every list section needs rows.",
+      "rowIdRequired": "Every list row needs an id.",
+      "rowIdDuplicate": "Duplicate list row id \"{id}\".",
+      "rowTitleRequired": "Every list row needs a title.",
+      "rowTitleTooLong": "List row title \"{title}\" exceeds the {limit}-character limit.",
+      "rowDescTooLong": "List row description exceeds the {limit}-character limit.",
+      "rowRequired": "Add at least one list row.",
+      "tooManyRows": "A list allows at most {limit} rows in total.",
+      "kindInvalid": "Interactive message must be reply buttons or a list."
     }
   },
   "Agents": {
@@ -1399,13 +1578,11 @@
       "deleteLocallyAria": "Delete template locally",
       "deleteMetaLocallyTitle": "Delete from Meta and locally",
       "deleteLocallyTitle": "Delete locally",
-      
       "dialogEditTitle": "Edit Message Template",
       "dialogNewTitle": "New Message Template",
       "dialogEditDesc": "Save your changes to re-submit to Meta. Status will flip back to PENDING during review.",
       "dialogNewDesc": "Build a template and submit it to Meta for approval. Once approved, you can use it in broadcasts and the inbox.",
       "authWarning": "AUTHENTICATION templates have a fixed body + OTP button shape that needs a different builder. Create them in Meta WhatsApp Manager for now and use <bold>Sync from Meta</bold> to bring them in.",
-      
       "templateName": "Template Name",
       "namePlaceholder": "e.g. order_confirmation",
       "nameFixed": "Name is fixed once a template exists on Meta — create a new template to change it.",
@@ -1414,7 +1591,6 @@
       "language": "Language",
       "langFixed": "Language is fixed once a template exists on Meta.",
       "langHint": "Must match the exact code on Meta — <code>en_US</code> and <code>en</code> are distinct.",
-      
       "header": "Header",
       "headerNone": "None",
       "headerText": "Text",
@@ -1424,7 +1600,6 @@
       "headerTextPlaceholder": "Header text (max 60 chars, optional {{1}})",
       "headerSampleAria": "Sample value for header variable",
       "headerSamplePlaceholder": "Sample value for {{1}} (required for Meta review)",
-      
       "uploadImage": "Upload image",
       "uploadHint": "JPEG or PNG, ≤5 MB",
       "mediaUrlPlaceholder": "https://… (or paste a public {format} link)",
@@ -1432,17 +1607,14 @@
       "mediaHint": "Must be a publicly accessible HTTPS link. Meta fetches it once during review, so it needs to stay live for ~24 hrs.",
       "videoHint": " Recommended: MP4 / 3GPP, ≤16 MB, ≤60 seconds.",
       "documentHint": " Recommended: PDF, ≤100 MB.",
-      
       "bodyText": "Body Text",
       "bodyPlaceholder": "Hello {{1}}, your order {{2}} is confirmed.",
       "bodyHint": "Use {{1}}, {{2}} for variables (must be contiguous starting at {{1}}).",
       "sampleValues": "Sample values (Meta uses these to review your template)",
       "sampleAria": "Sample value for body variable {var}",
       "samplePlaceholder": "Sample for {var}",
-      
       "footer": "Footer (optional)",
       "footerPlaceholder": "Optional footer text (max 60 chars)",
-      
       "buttons": "Buttons (optional)",
       "addButton": "Add Button",
       "buttonsLimit": "Up to {max} buttons. QUICK_REPLY buttons must come before URL / phone / copy-code buttons.",
@@ -1455,19 +1627,16 @@
       "urlSamplePlaceholder": "Example value for {{1}} (required when URL has a variable)",
       "phonePlaceholder": "+15551234567",
       "codePlaceholder": "Example code (e.g. SUMMER20)",
-      
       "cancel": "Cancel",
       "saving": "Saving…",
       "submitting": "Submitting…",
       "saveResubmit": "Save & Resubmit",
       "submitApproval": "Submit for Approval",
-      
       "deleteDialogTitle": "Delete template?",
       "deleteMetaDesc": "\"{name}\" will be deleted from Meta and from wacrm. Active broadcasts using this template will start failing on their next send. This can't be undone.",
       "deleteLocalDesc": "\"{name}\" will be deleted from wacrm. It was never submitted to Meta, so no remote cleanup is needed.",
       "deleting": "Deleting…",
       "delete": "Delete",
-      
       "toastLoadFailed": "Failed to load templates",
       "toastSubmitFailed": "Failed to submit",
       "toastSubmitEditSuccess": "Edit submitted — Meta typically reviews within 24 hours.",
@@ -1484,7 +1653,8 @@
       "toastInvalidImage": "Header image must be a JPEG or PNG.",
       "toastImageTooLarge": "Image is {size} MB — Meta's limit is 5 MB.",
       "toastUploadSuccess": "Image uploaded.",
-      "toastUploadFailed": "Upload failed."
+      "toastUploadFailed": "Upload failed.",
+      "headerTextAria": "Header text"
     },
     "roles": {
       "admin": "Admin",
@@ -1567,36 +1737,29 @@
       "step4_4": "Enter the same <strong class=\"text-foreground\">Verify Token</strong> you set here",
       "step4_5": "Subscribe to \"messages\" webhook field",
       "metaDocs": "Meta WhatsApp API Documentation",
-
       "providerCardTitle": "WhatsApp Provider",
       "providerCardDesc": "Choose the WhatsApp connection method for this account.",
       "providerMeta": "Meta Cloud API",
       "providerEvolution": "Evolution API",
       "providerEvolutionNotice": "Evolution API uses WhatsApp Web / Baileys and is intended for testing. It does not support templates or interactive messages.",
-
       "loadFailed": "Failed to load WhatsApp configuration",
       "saveFailed": "Failed to save configuration",
       "resetFailed": "Failed to reset configuration",
       "resetConfirm": "This will delete the current WhatsApp config so you can re-enter it. Continue?",
       "resetSuccess": "Configuration cleared. You can now re-enter your credentials.",
-
       "phoneNumberIdRequired": "Phone Number ID is required",
       "accessTokenRequired": "Access Token is required for initial setup",
       "accessTokenReenter": "Please re-enter the Access Token to save changes",
-
       "saveVerified": "Credentials saved and verified. Inbound registration was skipped (no PIN) — see Registration status below.",
       "saveLive": "WhatsApp connected. Events will start flowing within a minute.",
       "saveLiveNamed": "Live — {name} can now receive events.",
       "saveRegistrationFailed": "Saved, but Meta couldn't register the number: {message}",
-
       "testConnectionSuccess": "API connection successful",
       "testConnectionSuccessNamed": "Connected to {name}",
       "testConnectionFailedNetwork": "Connection test failed. Check network and try again.",
-
       "verifyRegistrationSuccess": "Number is fully wired — Meta is delivering events.",
       "verifyRegistrationFailed": "Number is not fully registered. See the checks below for which step failed.",
       "verifyRegistrationUnreachable": "Could not reach the verification endpoint.",
-
       "copyWebhookSuccess": "Webhook URL copied to clipboard"
     },
     "evolution": {
@@ -1604,17 +1767,14 @@
       "experimentalDesc": "Evolution API with Baileys / WhatsApp Web is intended for development and testing. It is not equivalent to the official WhatsApp Cloud API and may be subject to disconnections or restrictions.",
       "noticeTitle": "Evolution API notice",
       "noticeDesc": "Evolution API is licensed under Apache 2.0 with additional brand and attribution conditions. A visible notice of use is required. For commercial redistribution, review the Evolution API license and consider a commercial license if the notice conditions cannot be met.",
-
       "statusConnected": "Connected",
       "statusNotConnected": "Not connected",
       "statusConnectedDesc": "Evolution instance is connected.",
       "statusNotConnectedDesc": "Configure and save to connect.",
       "statusNotConnectedFallback": "Instance not connected.",
-
       "qrTitle": "Pairing QR Code",
       "qrDesc": "Open WhatsApp on your phone, go to Linked Devices, and scan this code.",
       "qrAlt": "Evolution pairing QR",
-
       "credentialsTitle": "Evolution API Credentials",
       "credentialsDesc": "Connect to a self-hosted Evolution API v2.3.7+ instance.",
       "labelBaseUrl": "Base URL",
@@ -1627,11 +1787,9 @@
       "placeholderWebhookSecretNew": "Secret Evolution sends in webhooks",
       "webhookSecretHint": "Required. wacrm will configure Evolution to send this value in the apikey header.",
       "createInstanceLabel": "Create instance if it does not exist",
-
       "webhookTitle": "Webhook URL",
       "webhookDesc": "wacrm will register this URL on your Evolution instance automatically.",
       "webhookUrlLabel": "Webhook URL",
-
       "saving": "Saving…",
       "saveConfig": "Save Configuration",
       "testing": "Testing…",
@@ -1640,19 +1798,16 @@
       "importHistory": "Import history",
       "resetting": "Resetting…",
       "resetConfig": "Reset",
-
       "validationBaseUrlRequired": "Base URL and Instance Name are required",
       "validationApiKeyRequired": "API Key is required for initial setup",
       "validationWebhookSecretRequired": "Webhook Secret is required for initial setup",
       "validationApiKeyReenter": "Please re-enter the API Key to save changes",
       "validationWebhookSecretRequiredShort": "Webhook Secret is required",
-
       "saveSuccessWithQr": "Configuration saved. Scan the QR code with WhatsApp.",
       "saveSuccessConnected": "Evolution instance connected.",
       "saveSuccessNotConnected": "Configuration saved, but instance is not connected yet.",
       "resetSuccess": "Evolution configuration cleared.",
       "copyWebhookSuccess": "Webhook URL copied to clipboard",
-
       "importStartedInline": "Historical import started in the background. Contacts and messages will appear shortly.",
       "importStartedToast": "Historical import started in the background.",
       "importStartFailed": "Failed to start historical import",
@@ -1707,7 +1862,6 @@
       "profileSaved": "Profile saved",
       "emailChangeFailed": "Email change failed: {message}",
       "profileSavedEmailCheck": "Profile saved — check your email to confirm the address change",
-      
       "passwordTitle": "Password",
       "passwordDesc": "Use at least {min} characters. You will stay signed in on this device after changing it.",
       "currentPassword": "Current password",
@@ -1721,7 +1875,6 @@
       "currentPasswordIncorrect": "Current password is incorrect",
       "passwordUpdateFailed": "Password update failed: {message}",
       "passwordUpdated": "Password updated",
-      
       "sessionsTitle": "Active sessions",
       "sessionsDesc": "Sign out of every device where you're logged in — including this one. Useful if you lost a laptop or shared your password.",
       "signOutAll": "Sign out of all devices",
@@ -1739,7 +1892,8 @@
       "useMode": "Use {mode} mode",
       "active": "Active",
       "accentColor": "Accent color",
-      "useTheme": "Use {name} theme"
+      "useTheme": "Use {name} theme",
+      "colorModeAria": "Color mode"
     },
     "security": {
       "title": "Login & security",
