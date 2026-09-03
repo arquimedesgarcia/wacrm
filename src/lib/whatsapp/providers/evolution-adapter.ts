@@ -1019,6 +1019,24 @@ export class EvolutionAdapter implements WhatsAppProvider {
     for (const msg of messages) {
       const event = this.normalizeHistoricalMessage(msg, providerInstanceId);
       if (event) events.push(event);
+
+      // When the upsert carries a provider status, also emit a status
+      // event so the webhook advances the existing outbound row. Only
+      // meaningful for our own (fromMe) messages.
+      const status = this.#mapInboundStatus(
+        (msg as Record<string, unknown>).status
+      );
+      if (status && event?.isFromMe) {
+        events.push({
+          provider: 'evolution',
+          providerInstanceId,
+          providerMessageId: event.providerMessageId,
+          recipientPhone: normalizeInboundPhone(event.senderPhone),
+          status,
+          timestamp: event.timestamp,
+          errorMessage: null,
+        } as NormalizedStatusEvent);
+      }
     }
     return events;
   }

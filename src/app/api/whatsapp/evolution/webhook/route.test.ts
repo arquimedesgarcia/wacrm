@@ -17,6 +17,7 @@ const h = {
     conversationsFindOrCreate: 0,
     mediaBase64: null as string | null,
     existingMessage: null as Record<string, unknown> | null,
+    messageUpdates: [] as Record<string, unknown>[],
   },
 };
 
@@ -129,6 +130,7 @@ function makeSupabaseMock() {
       if (table === 'messages') {
         const msgChain = {
           eq: vi.fn(() => msgChain),
+          limit: vi.fn(() => msgChain),
           maybeSingle: vi.fn(() => {
             if (h.state.existingMessage) {
               return Promise.resolve({ data: h.state.existingMessage, error: null });
@@ -155,7 +157,10 @@ function makeSupabaseMock() {
               })),
             };
           }),
-          update: vi.fn(() => Promise.resolve({ error: null })),
+          update: vi.fn((payload: Record<string, unknown>) => {
+            h.state.messageUpdates.push(payload);
+            return Promise.resolve({ error: null });
+          }),
         };
       }
       return chain;
@@ -190,6 +195,7 @@ beforeEach(() => {
   h.state.conversationsFindOrCreate = 0;
   h.state.mediaBase64 = Buffer.from('hello-bytes').toString('base64');
   h.state.existingMessage = null;
+  h.state.messageUpdates = [];
 });
 
 afterEach(() => {
@@ -356,5 +362,51 @@ describe('Evolution webhook: fromMe reply written on the phone', () => {
 
     await makePostRequest(JSON.parse(await request.text()));
     expect(h.state.messagesInserts.filter((m) => m.message_id === 'DUP-1').length).toBe(0);
+  });
+});
+
+describe('Evolution webhook: status updates advance outbound state', () => {
+  it('updates an outbound message to delivered', async () => {
+    stubEvolutionFetch();
+    h.state.existingMessage = {
+      message_id: 'OUT-1',
+      conversation_id: 'conv-1',
+      status: 'sent',
+    };
+
+    await makePostRequest({
+      event: 'MESSAGES_UPDATE',
+      instance: 'waCRM',
+      data: {
+        keyId: 'OUT-1',
+        remoteJid: '15551234567@s.whatsapp.net',
+        status: 'DELIVERED',
+      },
+    });
+
+    expect(h.state.messageUpdates).toContainEqual({ status: 'delivered' });
+  });
+
+  it('does not downgrade a read message back to delivered', async () => {
+    stubEvolutionFetch();
+    h.state.existingMessage = {
+      message_id: 'OUT-READ-1',
+      conversation_id: 'conv-1',
+      status: 'read',
+    };
+
+    await makePostRequest({
+      event: 'MESSAGES_UPDATE',
+      instance: 'waCRM',
+      data: {
+        keyId: 'OUT-READ-1',
+        remoteJid: '15551234567@s.whatsapp.net',
+        status: 'DELIVERED',
+      },
+    });
+
+    expect(
+      h.state.messageUpdates.some((u) => u.status === 'delivered')
+    ).toBe(false);
   });
 });
