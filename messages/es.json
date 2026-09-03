@@ -174,7 +174,10 @@
       "selectConversation": "Selecciona una conversación",
       "selectConversationHint": "Elige una conversación de la izquierda para empezar a chatear",
       "today": "Hoy",
-      "yesterday": "Ayer"
+      "yesterday": "Ayer",
+      "messageNotReady": "Espera a que termine de enviarse el mensaje",
+      "reactionFailed": "Error al reaccionar: {reason}",
+      "assignmentUpdateFailed": "Error al actualizar la asignación"
     },
     "sessionTimer": {
       "expired": "Vencida",
@@ -759,7 +762,11 @@
         "errorLoadTags": "Error al cargar etiquetas",
         "errorLoadFields": "Error al cargar campos personalizados",
         "errorCsvParse": "No se pudo analizar el archivo CSV.",
-        "errorCsvMissingPhone": "El CSV debe tener una columna 'phone'."
+        "errorCsvMissingPhone": "El CSV debe tener una columna 'phone'.",
+        "summary": "Resumen de audiencia",
+        "calculating": "Calculando…",
+        "estimatedRecipients": "destinatarios estimados",
+        "selectTypeHint": "Selecciona un tipo de audiencia para ver la estimación."
       },
       "personalize": {
         "title": "Personalizar variables",
@@ -807,7 +814,11 @@
         "sending": "Enviando...",
         "preparing": "Preparando...",
         "progressDesc": "Procesando {current} de {total} destinatarios...",
-        "toastFailedPreview": "Error al cargar datos de vista previa"
+        "toastFailedPreview": "Error al cargar datos de vista previa",
+        "estimatedReach": "Alcance estimado",
+        "language": "Idioma",
+        "confirmTitle": "Confirmar difusión",
+        "confirmDescription": "Estás a punto de enviar esta difusión a {count} contactos usando la plantilla {template}. Esta acción no se puede deshacer."
       }
     }
   },
@@ -1414,7 +1425,13 @@
       "removeDialogDesc": "¿Eliminar a <bold>{name}</bold> de la cuenta? Se cerrará su sesión en esta cuenta y se le asignará una cuenta personal nueva en su próximo inicio de sesión. Su inicio de sesión no se elimina.",
       "cancel": "Cancelar",
       "removing": "Eliminando...",
-      "removeBtn": "Eliminar miembro"
+      "removeBtn": "Eliminar miembro",
+      "loadFailed": "Error al cargar los miembros",
+      "invitationsLoadFailed": "Error al cargar las invitaciones",
+      "roleUpdateFailed": "Error al actualizar el rol",
+      "memberRemoveFailed": "Error al eliminar el miembro",
+      "invitationRevokeFailed": "Error al revocar la invitación",
+      "networkError": "No se pudo conectar con el servidor"
     },
     "invite": {
       "inviteCreated": "Invitación creada",
@@ -1442,7 +1459,9 @@
       "labelTooLong": "La etiqueta debe tener {max} caracteres o menos",
       "copied": "Enlace de invitación copiado",
       "clipboardBlocked": "Portapapeles bloqueado — copia el enlace manualmente",
-      "whatsappMessage": "Únete a {accountName} en wacrm usando este enlace (válido por {expiresInDays} días): {url}"
+      "whatsappMessage": "Únete a {accountName} en wacrm usando este enlace (válido por {expiresInDays} días): {url}",
+      "createFailed": "Error al crear la invitación",
+      "networkError": "No se pudo conectar con el servidor. ¿Intentar de nuevo?"
     },
     "tagsAndFields": {
       "title": "Campos y etiquetas",
@@ -2285,5 +2304,36 @@
       "tooManyRows": "Una lista permite como máximo {limit} filas en total.",
       "kindInvalid": "El mensaje interactivo debe ser botones de respuesta o una lista."
     }
+  },
+  "SignupPage": {
+    "passwordsDoNotMatch": "Las contraseñas no coinciden",
+    "passwordTooShort": "La contraseña debe tener al menos 6 caracteres",
+    "checkEmail": "Revisa tu correo",
+    "confirmationSent": "Enviamos un enlace de confirmación a {email}. Revisa tu bandeja de entrada y haz clic en el enlace para verificar tu cuenta.",
+    "backToSignIn": "Volver a iniciar sesión",
+    "createAndJoin": "Crear cuenta y unirse",
+    "createAccount": "Crear cuenta",
+    "verifyAndJoin": "Verifica tu correo y luego acepta la invitación para unirte a tu equipo.",
+    "getStarted": "Comienza con CRM Template para WhatsApp",
+    "fullName": "Nombre completo",
+    "fullNamePlaceholder": "Juan Pérez",
+    "email": "Correo electrónico",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "password": "Contraseña",
+    "passwordPlaceholder": "Al menos 6 caracteres",
+    "confirmPassword": "Confirmar contraseña",
+    "confirmPasswordPlaceholder": "Repite tu contraseña",
+    "creatingAccount": "Creando cuenta..."
+  },
+  "ForgotPasswordPage": {
+    "checkEmail": "Revisa tu correo",
+    "resetSent": "Enviamos un enlace para restablecer la contraseña a {email}. Revisa tu bandeja de entrada.",
+    "backToSignIn": "Volver a iniciar sesión",
+    "title": "Restablecer contraseña",
+    "description": "Introduce tu correo y te enviaremos un enlace para restablecerla",
+    "email": "Correo electrónico",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "sending": "Enviando...",
+    "send": "Enviar enlace"
   }
 }

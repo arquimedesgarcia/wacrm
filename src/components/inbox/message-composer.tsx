@@ -276,7 +276,7 @@ export function MessageComposer({
       }
       const draftText = typeof data.draft === "string" ? data.draft.trim() : "";
       if (!draftText) {
-        toast.error("The assistant didn't return a reply.");
+        toast.error(tError("ai_empty_response"));
         return;
       }
       setText(draftText);
@@ -291,7 +291,7 @@ export function MessageComposer({
         }
       });
     } catch {
-      toast.error("Couldn't reach the AI assistant.");
+      toast.error(tError("network_error"));
     } finally {
       setDrafting(false);
     }
@@ -401,8 +401,8 @@ export function MessageComposer({
         // Replacing an existing draft? GC the previous object first.
         removeStaged(draftRef.current?.path);
         setDraft({ kind, mediaUrl: publicUrl, path, filename: file.name, caption: "" });
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+      } catch {
+        toast.error(tError("upload_failed"));
       } finally {
         setBusy(false);
       }
@@ -430,7 +430,7 @@ export function MessageComposer({
       });
       if (file.size === 0) return; // cancelled / empty take
       if (file.size > MEDIA_MAX_BYTES_BY_KIND.audio) {
-        toast.error("Recording is too long (over 16 MB).");
+        toast.error(tError("voice_too_long"));
         return;
       }
       setBusy(true);
@@ -438,8 +438,8 @@ export function MessageComposer({
         const { publicUrl, path } = await uploadAccountMedia(CHAT_MEDIA_BUCKET, file);
         removeStaged(draftRef.current?.path);
         setDraft({ kind: "audio", mediaUrl: publicUrl, path, filename: file.name, caption: "" });
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Upload failed.");
+      } catch {
+        toast.error(tError("upload_failed"));
       } finally {
         setBusy(false);
       }
@@ -450,7 +450,7 @@ export function MessageComposer({
   const startRecording = useCallback(async () => {
     if (inputsDisabled || busy || recording) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof AudioContext === "undefined") {
-      toast.error("Voice recording isn't supported in this browser.");
+      toast.error(tError("microphone_denied"));
       return;
     }
     try {
@@ -477,7 +477,7 @@ export function MessageComposer({
     } catch {
       void recorderRef.current?.stop().catch(() => {});
       recorderRef.current = null;
-      toast.error("Microphone access denied or unavailable.");
+      toast.error(tError("microphone_denied"));
     }
   }, [inputsDisabled, busy, recording, finalizeRecording]);
 

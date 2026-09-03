@@ -174,7 +174,10 @@
       "selectConversation": "Select a conversation",
       "selectConversationHint": "Choose a conversation from the left to start messaging",
       "today": "Today",
-      "yesterday": "Yesterday"
+      "yesterday": "Yesterday",
+      "messageNotReady": "Wait for the message to finish sending",
+      "reactionFailed": "Reaction failed: {reason}",
+      "assignmentUpdateFailed": "Failed to update assignment"
     },
     "sessionTimer": {
       "expired": "Expired",
@@ -759,7 +762,11 @@
         "errorLoadTags": "Failed to load tags",
         "errorLoadFields": "Failed to load custom fields",
         "errorCsvParse": "Could not parse CSV file.",
-        "errorCsvMissingPhone": "CSV must have a 'phone' column."
+        "errorCsvMissingPhone": "CSV must have a 'phone' column.",
+        "summary": "Audience Summary",
+        "calculating": "Calculating…",
+        "estimatedRecipients": "estimated recipients",
+        "selectTypeHint": "Select an audience type to see the estimate."
       },
       "personalize": {
         "title": "Personalize Variables",
@@ -807,7 +814,11 @@
         "sending": "Sending...",
         "preparing": "Preparing...",
         "progressDesc": "Processing {current} of {total} recipients...",
-        "toastFailedPreview": "Failed to load preview data"
+        "toastFailedPreview": "Failed to load preview data",
+        "estimatedReach": "Estimated Reach",
+        "language": "Language",
+        "confirmTitle": "Confirm Broadcast",
+        "confirmDescription": "You are about to send this broadcast to {count} contacts using the {template} template. This action cannot be undone."
       }
     }
   },
@@ -1494,7 +1505,13 @@
       "removeDialogDesc": "Remove <bold>{name}</bold> from the account? They'll be signed out of this account and given a fresh personal account on their next sign-in. Their login isn't deleted.",
       "cancel": "Cancel",
       "removing": "Removing...",
-      "removeBtn": "Remove member"
+      "removeBtn": "Remove member",
+      "loadFailed": "Failed to load members",
+      "invitationsLoadFailed": "Failed to load invitations",
+      "roleUpdateFailed": "Failed to update role",
+      "memberRemoveFailed": "Failed to remove member",
+      "invitationRevokeFailed": "Failed to revoke invitation",
+      "networkError": "Could not reach the server"
     },
     "invite": {
       "inviteCreated": "Invite created",
@@ -1522,7 +1539,9 @@
       "labelTooLong": "Label must be {max} characters or fewer",
       "copied": "Invite link copied",
       "clipboardBlocked": "Clipboard blocked — copy the link manually",
-      "whatsappMessage": "Join {accountName} on wacrm using this link (valid for {expiresInDays} days): {url}"
+      "whatsappMessage": "Join {accountName} on wacrm using this link (valid for {expiresInDays} days): {url}",
+      "createFailed": "Failed to create invitation",
+      "networkError": "Could not reach the server. Try again?"
     },
     "tagsAndFields": {
       "title": "Fields & tags",
@@ -2285,5 +2304,36 @@
       "profile_no_account": "Your profile is not linked to an account.",
       "whatsapp_phone_number_already_linked": "This WhatsApp phone number is already linked to another account. Each phone number can only be connected to one wacrm account."
     }
+  },
+  "SignupPage": {
+    "passwordsDoNotMatch": "Passwords do not match",
+    "passwordTooShort": "Password must be at least 6 characters",
+    "checkEmail": "Check your email",
+    "confirmationSent": "We've sent a confirmation link to {email}. Please check your inbox and click the link to verify your account.",
+    "backToSignIn": "Back to sign in",
+    "createAndJoin": "Create account & join",
+    "createAccount": "Create account",
+    "verifyAndJoin": "Verify your email, then accept the invitation to join your team.",
+    "getStarted": "Get started with CRM Template for WhatsApp",
+    "fullName": "Full name",
+    "fullNamePlaceholder": "John Doe",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "At least 6 characters",
+    "confirmPassword": "Confirm password",
+    "confirmPasswordPlaceholder": "Repeat your password",
+    "creatingAccount": "Creating account..."
+  },
+  "ForgotPasswordPage": {
+    "checkEmail": "Check your email",
+    "resetSent": "We've sent a password reset link to {email}. Please check your inbox.",
+    "backToSignIn": "Back to sign in",
+    "title": "Reset password",
+    "description": "Enter your email and we'll send you a reset link",
+    "email": "Email",
+    "emailPlaceholder": "you@example.com",
+    "sending": "Sending...",
+    "send": "Send reset link"
   }
 }
