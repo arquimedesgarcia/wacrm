@@ -6,11 +6,12 @@ import {
   CONVERSATION_SELECT,
   matchesInboxFilters,
   normalizeConversations,
+  pickLastMediaThumbnail,
   type RawConversation,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
-import { Search, ChevronDown, X } from "lucide-react";
+import { Search, ChevronDown, X, Image as ImageIcon, Film } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { useTranslations } from "next-intl";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useMediaBlobUrl } from "@/hooks/use-media-blob-url";
+import type { ConversationRecentMessage } from "@/types";
 
 interface ConversationListProps {
   activeConversationId: string | null;
@@ -99,12 +102,22 @@ export function ConversationList({
     // The status filter is duplicated on the server as a safety net so the
     // list never returns closed / empty conversations for the default view,
     // even if the client filter is bypassed or a stale cache is used.
+    //
+    // `recent_messages` is bounded to 10 rows by `!inner` and ordering —
+    // enough to find the latest image/video without dragging every message
+    // across the wire. Client-side `pickLastMediaThumbnail` picks the
+    // first usable one.
     (async () => {
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
         .not("last_message_at", "is", null)
         .in("status", ["open", "pending"])
+        .order("last_message_at", {
+          ascending: false,
+          foreignTable: "recent_messages",
+        })
+        .limit(10, { foreignTable: "recent_messages" })
         .order("last_message_at", { ascending: false });
 
       if (cancelled) return;
@@ -432,6 +445,7 @@ function ConversationItem({
   const contact = conversation.contact;
   const displayName = contact?.name || contact?.phone || t("unknown");
   const initials = displayName.charAt(0).toUpperCase();
+  const thumbnail = pickLastMediaThumbnail(conversation.recent_messages);
 
   const handleClick = useCallback(() => {
     onSelect(conversation);
@@ -491,7 +505,65 @@ function ConversationItem({
             />
           </div>
         </div>
+        {thumbnail && (
+          <div className="mt-1.5">
+            <ConversationMediaPreview media={thumbnail} />
+          </div>
+        )}
       </div>
     </button>
+  );
+}
+
+/**
+ * 36×36 thumbnail of the most recent image/video attachment in the thread.
+ * Shown underneath the last-message preview so agents can spot visual
+ * content without opening the conversation. Loading and error states are
+ * silent — the row already has plenty of content, and a missing thumbnail
+ * is no worse than no thumbnail.
+ */
+function ConversationMediaPreview({
+  media,
+}: {
+  media: ConversationRecentMessage;
+}) {
+  const { src, status } = useMediaBlobUrl(media.media_url ?? undefined);
+  const isVideo = media.content_type === "video";
+
+  if (status === "error" || (!isVideo && status === "ready" && !src)) {
+    return null;
+  }
+
+  if (status !== "ready" || !src) {
+    return (
+      <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted text-muted-foreground">
+        {isVideo ? (
+          <Film className="h-4 w-4" />
+        ) : (
+          <ImageIcon className="h-4 w-4" />
+        )}
+      </div>
+    );
+  }
+
+  if (isVideo) {
+    // Video bubbles get a static film icon overlay rather than a heavy
+    // <video> preview — keeps the list scrollable on long threads.
+    return (
+      <div className="relative h-9 w-9 overflow-hidden rounded-md bg-muted">
+        <div className="absolute inset-0 flex items-center justify-center bg-black/40 text-white">
+          <Film className="h-4 w-4" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      className="h-9 w-9 rounded-md object-cover"
+    />
   );
 }

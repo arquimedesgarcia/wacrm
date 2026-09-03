@@ -1,28 +1,66 @@
-import type { Conversation, Contact, Tag } from "@/types";
+import type { Conversation, Contact, Tag, ConversationRecentMessage } from "@/types";
 
 /**
  * Conversation select that embeds the contact plus its tags, so the Inbox
  * can filter conversations by contact tag without a second round-trip.
  * `contact_tags(tags(*))` returns the join rows; {@link normalizeConversation}
  * flattens them onto `contact.tags`.
+ *
+ * Also embeds recent messages so the inbox list can surface the latest
+ * image/video attachment as a thumbnail without a second round-trip. The
+ * client-side {@link pickLastMediaThumbnail} walks the array to find the
+ * first usable image/video entry; text-only conversations simply have none.
  */
 export const CONVERSATION_SELECT =
-  "*, contact:contacts(*, contact_tags(tags(*)))";
+  "*, contact:contacts(*, contact_tags(tags(*))), recent_messages: messages(id, media_url, media_type, content_type, created_at)";
 
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
 export type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
+
+/** Alias kept for backwards compatibility with the previous name. */
+export type RawRecentMessage = ConversationRecentMessage;
+
 export type RawConversation = Omit<Conversation, "contact"> & {
   contact?: RawContact | null;
+  /** Recent messages, newest first. Empty array when none. */
+  recent_messages?: ConversationRecentMessage[] | null;
 };
+
+/**
+ * Pick the most recent image/video attachment to render as the inbox
+ * thumbnail. Returns null when no message carries an image/video.
+ */
+export function pickLastMediaThumbnail(
+  rows: ConversationRecentMessage[] | null | undefined,
+): ConversationRecentMessage | null {
+  if (!rows || rows.length === 0) return null;
+  for (const row of rows) {
+    if (
+      row.media_url &&
+      (row.content_type === "image" || row.content_type === "video")
+    ) {
+      return row;
+    }
+  }
+  return null;
+}
 
 /**
  * Flatten the embedded `contact_tags(tags(*))` join into `contact.tags`.
  * Safe to call on rows fetched with {@link CONVERSATION_SELECT}; a row with
  * no contact (e.g. a freshly-inserted conversation) passes through untouched.
+ *
+ * Also propagates the `recent_messages` array verbatim — the inbox list uses
+ * it to render a media thumbnail without a second round-trip.
  */
 export function normalizeConversation(raw: RawConversation): Conversation {
   const rawContact = raw.contact;
-  if (!rawContact) return raw as Conversation;
+  if (!rawContact) {
+    return {
+      ...(raw as Conversation),
+      recent_messages: raw.recent_messages ?? undefined,
+    };
+  }
 
   const { contact_tags, ...contact } = rawContact;
   return {
@@ -33,6 +71,7 @@ export function normalizeConversation(raw: RawConversation): Conversation {
         .map((ct) => ct.tags)
         .filter((t): t is Tag => t != null),
     },
+    recent_messages: raw.recent_messages ?? undefined,
   };
 }
 

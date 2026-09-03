@@ -157,6 +157,19 @@ export interface ContactNote {
 
 export type ConversationStatus = 'open' | 'pending' | 'closed';
 
+/**
+ * Subset of a `messages` row embedded by the Inbox conversation query to
+ * surface a media thumbnail in the list. Mirrors the columns in
+ * `src/lib/inbox/conversations.ts`'s `CONVERSATION_SELECT`.
+ */
+export interface ConversationRecentMessage {
+  id: string;
+  media_url: string | null;
+  media_type: string | null;
+  content_type: string;
+  created_at: string;
+}
+
 export interface Conversation {
   id: string;
   user_id: string;
@@ -169,6 +182,13 @@ export interface Conversation {
   created_at: string;
   updated_at: string;
   contact?: Contact;
+  /**
+   * Recent messages, newest first, embedded by the Inbox query
+   * (`{@link CONVERSATION_SELECT}`). Used to surface a thumbnail in the
+   * conversation list without a second round-trip. Optional because older
+   * callers (broadcasts, deals, automations) never embed it.
+   */
+  recent_messages?: ConversationRecentMessage[];
   /**
    * AI auto-reply state for this thread (migration 029 + 033):
    *  - `ai_autoreply_disabled` — the bot is paused here (a human took
