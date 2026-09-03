@@ -1040,15 +1040,23 @@ export class EvolutionAdapter implements WhatsAppProvider {
       const key = (update.key ?? {}) as Record<string, unknown>;
       const keyId = String(update.keyId ?? key.id ?? '');
       const remoteJid = String(update.remoteJid ?? key.remoteJid ?? '');
+      const nestedUpdate =
+        update.update && typeof update.update === 'object'
+          ? (update.update as Record<string, unknown>)
+          : null;
+      const rawStatus = update.status ?? nestedUpdate?.status;
 
       if (!keyId) continue;
+
+      const status = this.#mapInboundStatus(rawStatus);
+      if (!status) continue;
 
       events.push({
         provider: 'evolution',
         providerInstanceId,
         providerMessageId: keyId,
         recipientPhone: normalizeInboundPhone(remoteJid),
-        status: this.#mapInboundStatus(String(update.status ?? 'sent')),
+        status,
         timestamp: normalizeTimestamp(
           update.messageTimestamp as string | number | undefined
         ),
@@ -1114,8 +1122,28 @@ export class EvolutionAdapter implements WhatsAppProvider {
   }
 
   #mapInboundStatus(
-    status: string
-  ): 'sending' | 'sent' | 'delivered' | 'read' | 'failed' {
+    status: unknown
+  ): 'sending' | 'sent' | 'delivered' | 'read' | 'failed' | null {
+    if (typeof status === 'number') {
+      switch (status) {
+        case 0:
+          return 'failed';
+        case 1:
+          return 'sending';
+        case 2:
+          return 'sent';
+        case 3:
+          return 'delivered';
+        case 4:
+        case 5:
+          return 'read';
+        default:
+          return null;
+      }
+    }
+
+    if (typeof status !== 'string') return null;
+
     switch (status.toLowerCase()) {
       case 'pending':
       case 'sending':
@@ -1128,12 +1156,13 @@ export class EvolutionAdapter implements WhatsAppProvider {
         return 'delivered';
       case 'read':
       case 'read_ack':
+      case 'played':
         return 'read';
       case 'failed':
       case 'error':
         return 'failed';
       default:
-        return 'sent';
+        return null;
     }
   }
 

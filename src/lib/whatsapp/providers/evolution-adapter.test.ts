@@ -483,6 +483,58 @@ describe('EvolutionAdapter normalizeInbound', () => {
     expect(event.recipientPhone).toBe('15551234567');
   });
 
+  it('normalizes nested Baileys message update statuses', () => {
+    const adapter = new EvolutionAdapter();
+    const events = adapter.normalizeInbound({
+      event: 'messages.update',
+      instance: 'waCRM',
+      data: {
+        key: {
+          id: 'MSG-NESTED-1',
+          remoteJid: '15551234567@s.whatsapp.net',
+        },
+        update: { status: 4 },
+        messageTimestamp: 1700000000,
+      },
+    });
+
+    expect(events).toHaveLength(1);
+    expect((events[0] as { providerMessageId: string }).providerMessageId).toBe(
+      'MSG-NESTED-1',
+    );
+    expect((events[0] as { status: string }).status).toBe('read');
+  });
+
+  it('maps played status to read', () => {
+    const adapter = new EvolutionAdapter();
+    const events = adapter.normalizeInbound({
+      event: 'messages.update',
+      instance: 'waCRM',
+      data: {
+        keyId: 'MSG-PLAYED-1',
+        remoteJid: '15551234567@s.whatsapp.net',
+        status: 'PLAYED',
+      },
+    });
+
+    expect((events[0] as { status: string }).status).toBe('read');
+  });
+
+  it('does not let an unknown provider status masquerade as sent', () => {
+    const adapter = new EvolutionAdapter();
+    const events = adapter.normalizeInbound({
+      event: 'messages.update',
+      instance: 'waCRM',
+      data: {
+        keyId: 'MSG-UNKNOWN-1',
+        remoteJid: '15551234567@s.whatsapp.net',
+        status: 'SOMETHING_NEW',
+      },
+    });
+
+    expect(events).toHaveLength(0);
+  });
+
   it('normalizes QR code events and strips secrets from rawPayload', () => {
     const adapter = new EvolutionAdapter();
     const events = adapter.normalizeInbound({

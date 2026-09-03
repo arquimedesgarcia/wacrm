@@ -31,6 +31,7 @@ import { runAutomationsForTrigger } from '@/lib/automations/engine';
 import { dispatchInboundToFlows } from '@/lib/flows/engine';
 import { dispatchInboundToAiReply } from '@/lib/ai/auto-reply';
 import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
+import { shouldApplyMessageStatus } from '@/lib/whatsapp/providers/status';
 import type {
   NormalizedInboundEvent,
   NormalizedStatusEvent,
@@ -487,15 +488,18 @@ async function handleFromMeEcho(
   // that originated in WaCRM), treat the echo as a status update only.
   const { data: existing } = await supabaseAdmin()
     .from('messages')
-    .select('id, conversation_id')
+    .select('id, conversation_id, status')
     .eq('message_id', event.providerMessageId)
     .maybeSingle();
 
   if (existing) {
-    await supabaseAdmin()
-      .from('messages')
-      .update({ status: 'delivered' })
-      .eq('id', existing.id);
+    if (shouldApplyMessageStatus(existing.status, 'delivered')) {
+      await supabaseAdmin()
+        .from('messages')
+        .update({ status: 'delivered' })
+        .eq('id', existing.id)
+        .eq('status', existing.status);
+    }
     return;
   }
 
@@ -560,11 +564,22 @@ async function handleFromMeEcho(
 }
 
 async function handleStatusUpdate(event: NormalizedStatusEvent) {
-  // Update messages.status.
-  await supabaseAdmin()
+  // Apply only forward lifecycle transitions. Evolution can deliver stale
+  // updates after a message is already read.
+  const { data: message } = await supabaseAdmin()
     .from('messages')
-    .update({ status: event.status })
-    .eq('message_id', event.providerMessageId);
+    .select('id, status')
+    .eq('message_id', event.providerMessageId)
+    .limit(1)
+    .maybeSingle();
+
+  if (message && shouldApplyMessageStatus(message.status, event.status)) {
+    await supabaseAdmin()
+      .from('messages')
+      .update({ status: event.status })
+      .eq('id', message.id)
+      .eq('status', message.status);
+  }
 
   // Update broadcast_recipients if applicable.
   const update: Record<string, unknown> = { status: event.status };
