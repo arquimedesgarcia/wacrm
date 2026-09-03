@@ -8,6 +8,7 @@ import {
   normalizeConversations,
   pickLastMediaThumbnail,
   type RawConversation,
+  type RawRecentMessage,
 } from "@/lib/inbox/conversations";
 import { cn } from "@/lib/utils";
 import type { Conversation, ConversationStatus, Tag } from "@/types";
@@ -98,26 +99,14 @@ export function ConversationList({
     const supabase = createClient();
     let cancelled = false;
 
-    // Fetch conversations with at least one message, limited to open/pending.
-    // The status filter is duplicated on the server as a safety net so the
-    // list never returns closed / empty conversations for the default view,
-    // even if the client filter is bypassed or a stale cache is used.
-    //
-    // `recent_messages` is bounded to 10 rows by `!inner` and ordering —
-    // enough to find the latest image/video without dragging every message
-    // across the wire. Client-side `pickLastMediaThumbnail` picks the
-    // first usable one.
+    // Fetch conversations first. Optional media enrichment runs afterward
+    // and cannot prevent the base list from rendering.
     (async () => {
       const { data, error } = await supabase
         .from("conversations")
         .select(CONVERSATION_SELECT)
         .not("last_message_at", "is", null)
         .in("status", ["open", "pending"])
-        .order("last_message_at", {
-          ascending: false,
-          foreignTable: "recent_messages",
-        })
-        .limit(10, { foreignTable: "recent_messages" })
         .order("last_message_at", { ascending: false });
 
       if (cancelled) return;
@@ -134,8 +123,44 @@ export function ConversationList({
         return;
       }
 
-      onConversationsLoadedRef.current(normalizeConversations((data ?? []) as RawConversation[]));
+      const normalized = normalizeConversations((data ?? []) as RawConversation[]);
+      // Conversations must render independently of optional media enrichment.
+      onConversationsLoadedRef.current(normalized);
       setLoading(false);
+
+      const conversationIds = normalized.map((conversation) => conversation.id);
+      if (conversationIds.length === 0) return;
+
+      // Optional enrichment: a failed media query must never hide the inbox.
+      const { data: mediaRows, error: mediaError } = await supabase
+        .from("messages")
+        .select("id, conversation_id, media_url, media_type, content_type, created_at")
+        .in("conversation_id", conversationIds)
+        .in("content_type", ["image", "video"])
+        .not("media_url", "is", null)
+        .order("created_at", { ascending: false });
+
+      if (cancelled || mediaError || !mediaRows) {
+        if (mediaError) {
+          console.warn("Failed to fetch conversation media previews:", mediaError.message);
+        }
+        return;
+      }
+
+      const mediaByConversation = new Map<string, RawRecentMessage[]>();
+      for (const row of mediaRows as RawRecentMessage[]) {
+        if (!row.conversation_id) continue;
+        const items = mediaByConversation.get(row.conversation_id) ?? [];
+        if (items.length < 3) items.push(row);
+        mediaByConversation.set(row.conversation_id, items);
+      }
+
+      onConversationsLoadedRef.current(
+        normalized.map((conversation) => ({
+          ...conversation,
+          recent_messages: mediaByConversation.get(conversation.id) ?? [],
+        })),
+      );
     })();
 
     return () => {

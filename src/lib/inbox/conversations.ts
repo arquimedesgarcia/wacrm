@@ -1,29 +1,29 @@
-import type { Conversation, Contact, Tag, ConversationRecentMessage } from "@/types";
+import type { Conversation, Contact, Tag } from "@/types";
 
 /**
  * Conversation select that embeds the contact plus its tags, so the Inbox
  * can filter conversations by contact tag without a second round-trip.
  * `contact_tags(tags(*))` returns the join rows; {@link normalizeConversation}
  * flattens them onto `contact.tags`.
- *
- * Also embeds recent messages so the inbox list can surface the latest
- * image/video attachment as a thumbnail without a second round-trip. The
- * client-side {@link pickLastMediaThumbnail} walks the array to find the
- * first usable image/video entry; text-only conversations simply have none.
  */
 export const CONVERSATION_SELECT =
-  "*, contact:contacts(*, contact_tags(tags(*))), recent_messages: messages(id, media_url, media_type, content_type, created_at)";
+  "*, contact:contacts(*, contact_tags(tags(*)))";
 
 /** Raw shape returned by {@link CONVERSATION_SELECT} before flattening. */
 export type RawContact = Contact & { contact_tags?: { tags: Tag | null }[] };
 
-/** Alias kept for backwards compatibility with the previous name. */
-export type RawRecentMessage = ConversationRecentMessage;
+/** Raw shape returned by the optional Inbox media query. */
+export interface RawRecentMessage {
+  id: string;
+  conversation_id?: string;
+  media_url: string | null;
+  media_type: string | null;
+  content_type: string;
+  created_at: string;
+}
 
 export type RawConversation = Omit<Conversation, "contact"> & {
   contact?: RawContact | null;
-  /** Recent messages, newest first. Empty array when none. */
-  recent_messages?: ConversationRecentMessage[] | null;
 };
 
 /**
@@ -31,18 +31,14 @@ export type RawConversation = Omit<Conversation, "contact"> & {
  * thumbnail. Returns null when no message carries an image/video.
  */
 export function pickLastMediaThumbnail(
-  rows: ConversationRecentMessage[] | null | undefined,
-): ConversationRecentMessage | null {
+  rows: RawRecentMessage[] | null | undefined,
+): RawRecentMessage | null {
   if (!rows || rows.length === 0) return null;
-  for (const row of rows) {
-    if (
-      row.media_url &&
-      (row.content_type === "image" || row.content_type === "video")
-    ) {
-      return row;
-    }
-  }
-  return null;
+  return rows.find(
+    (row) =>
+      Boolean(row.media_url) &&
+      (row.content_type === "image" || row.content_type === "video"),
+  ) ?? null;
 }
 
 /**
@@ -55,12 +51,7 @@ export function pickLastMediaThumbnail(
  */
 export function normalizeConversation(raw: RawConversation): Conversation {
   const rawContact = raw.contact;
-  if (!rawContact) {
-    return {
-      ...(raw as Conversation),
-      recent_messages: raw.recent_messages ?? undefined,
-    };
-  }
+  if (!rawContact) return raw as Conversation;
 
   const { contact_tags, ...contact } = rawContact;
   return {
@@ -71,7 +62,6 @@ export function normalizeConversation(raw: RawConversation): Conversation {
         .map((ct) => ct.tags)
         .filter((t): t is Tag => t != null),
     },
-    recent_messages: raw.recent_messages ?? undefined,
   };
 }
 
