@@ -17,6 +17,7 @@ import {
   type SupportedLocale,
 } from '@/features/i18n/config';
 import { getSavedLocale, saveLocale } from '@/features/i18n/locale';
+import { useTranslations } from 'next-intl';
 
 /**
  * Selector de idioma implementado como submenú, pensado para vivir
@@ -25,6 +26,7 @@ import { getSavedLocale, saveLocale } from '@/features/i18n/locale';
  * el middleware y `next-intl` resuelvan el nuevo locale en SSR.
  */
 export function LocaleSwitcher() {
+  const t = useTranslations('Common');
   const [current, setCurrent] = useState<SupportedLocale>(
     getSavedLocale() ?? DEFAULT_LOCALE
   );
@@ -40,7 +42,7 @@ export function LocaleSwitcher() {
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="w-full">
         <LanguagesIcon className="size-4" />
-        <span className="flex-1">Language</span>
+        <span className="flex-1">{t('language')}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent>
         <DropdownMenuRadioGroup

@@ -928,15 +928,14 @@ function SendMediaForm({
           media_url: publicUrl,
           filename: file.name,
         });
-        toast.success("File uploaded.");
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : "Upload failed.";
-        toast.error(msg);
+        toast.success(t("fileUploaded"));
+      } catch {
+        toast.error(t("uploadFailed"));
       } finally {
         setUploading(false);
       }
     },
-    [onUpdateConfig],
+    [onUpdateConfig, t],
   );
 
   const handleClear = () => {
