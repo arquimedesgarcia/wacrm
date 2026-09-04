@@ -198,6 +198,16 @@ export async function POST(request: Request) {
     }
 
     // Encrypt secrets before any external call or persistence.
+    if (!api_key || typeof api_key !== 'string' || api_key.length < 10) {
+      return errorCode('evolution_config_validate_failed', 400, {
+        message: 'api_key must be a valid string of at least 10 characters',
+      })
+    }
+    if (!webhook_secret || typeof webhook_secret !== 'string' || webhook_secret.length < 4) {
+      return errorCode('evolution_config_validate_failed', 400, {
+        message: 'webhook_secret must be at least 4 characters',
+      })
+    }
     let encryptedApiKey: string
     let encryptedWebhookSecret: string
     try {
