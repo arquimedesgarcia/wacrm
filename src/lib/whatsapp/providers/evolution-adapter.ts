@@ -34,6 +34,7 @@ import type {
   WhatsAppProvider,
   NormalizedWebhookEvent,
   NormalizedInboundEvent,
+  NormalizedReactionEvent,
   NormalizedStatusEvent,
 } from './types';
 import { ProviderError, CapabilityNotSupportedError } from './errors';
@@ -519,7 +520,10 @@ export class EvolutionAdapter implements WhatsAppProvider {
         (messageContent.messageTimestamp as string | number | undefined)
     );
 
-    const mediaContent = messageContent as Record<string, { caption?: unknown }>;
+    const mediaContent = messageContent as Record<
+      string,
+      { caption?: unknown }
+    >;
     const conversationContent = (messageContent.conversation ?? {}) as Record<
       string,
       unknown
@@ -533,7 +537,7 @@ export class EvolutionAdapter implements WhatsAppProvider {
               mediaContent.imageMessage?.caption ??
               mediaContent.videoMessage?.caption ??
               mediaContent.documentMessage?.caption ??
-              '',
+              ''
           );
 
     const type = normalizeContentType(
@@ -1005,6 +1009,53 @@ export class EvolutionAdapter implements WhatsAppProvider {
     return clone;
   }
 
+  #normalizeReaction(
+    msg: unknown,
+    payload: Record<string, unknown>,
+    providerInstanceId: string
+  ): NormalizedReactionEvent | null {
+    if (!msg || typeof msg !== 'object') return null;
+    const m = msg as Record<string, unknown>;
+    const key = (m.key ?? {}) as Record<string, unknown>;
+    const message = (m.message ?? {}) as Record<string, unknown>;
+    const reaction = message.reactionMessage;
+    if (!reaction || typeof reaction !== 'object') return null;
+
+    const reactionData = reaction as Record<string, unknown>;
+    const targetKey = (reactionData.key ?? {}) as Record<string, unknown>;
+    const providerMessageId = String(key.id ?? '');
+    const remoteJid = String(key.remoteJid ?? '');
+    const actorJid = String(key.participant ?? key.remoteJid ?? '');
+    const targetProviderMessageId = String(targetKey.id ?? '');
+    const emoji =
+      typeof reactionData.text === 'string' ? reactionData.text : null;
+
+    if (
+      !providerMessageId ||
+      !remoteJid ||
+      !actorJid ||
+      !targetProviderMessageId ||
+      emoji === null
+    ) {
+      return null;
+    }
+
+    return {
+      provider: 'evolution',
+      providerInstanceId,
+      providerMessageId,
+      remoteJid,
+      actorJid,
+      targetProviderMessageId,
+      emoji,
+      timestamp: normalizeTimestamp(
+        (m.messageTimestamp as string | number | undefined) ??
+          (payload.date_time as string | number | undefined)
+      ),
+      rawPayload: this.#sanitizeRawPayload(m),
+    };
+  }
+
   #normalizeMessagesUpsert(
     payload: Record<string, unknown>
   ): NormalizedWebhookEvent[] {
@@ -1017,6 +1068,16 @@ export class EvolutionAdapter implements WhatsAppProvider {
 
     const events: NormalizedWebhookEvent[] = [];
     for (const msg of messages) {
+      const reaction = this.#normalizeReaction(
+        msg,
+        payload,
+        providerInstanceId
+      );
+      if (reaction) {
+        events.push(reaction);
+        continue;
+      }
+
       const event = this.normalizeHistoricalMessage(msg, providerInstanceId);
       if (event) events.push(event);
 

@@ -407,6 +407,80 @@ describe('EvolutionAdapter configureWebhook', () => {
 });
 
 describe('EvolutionAdapter normalizeInbound', () => {
+  it('normalizes an incoming reaction without creating a message event', () => {
+    const adapter = new EvolutionAdapter();
+    const events = adapter.normalizeInbound({
+      event: 'MESSAGES_UPSERT',
+      instance: 'waCRM',
+      data: {
+        key: {
+          remoteJid: '15551234567@s.whatsapp.net',
+          fromMe: false,
+          id: 'REACTION-1',
+        },
+        message: {
+          reactionMessage: {
+            key: {
+              remoteJid: '15551234567@s.whatsapp.net',
+              fromMe: true,
+              id: 'TARGET-1',
+            },
+            text: '👍',
+          },
+        },
+        messageTimestamp: 1700000000,
+      },
+    });
+
+    expect(events).toEqual([
+      expect.objectContaining({
+        providerMessageId: 'REACTION-1',
+        remoteJid: '15551234567@s.whatsapp.net',
+        actorJid: '15551234567@s.whatsapp.net',
+        targetProviderMessageId: 'TARGET-1',
+        emoji: '👍',
+      }),
+    ]);
+    expect(events[0]).not.toHaveProperty('contentText');
+  });
+
+  it('normalizes an empty reaction as a removal event', () => {
+    const adapter = new EvolutionAdapter();
+    const [event] = adapter.normalizeInbound({
+      event: 'messages.upsert',
+      instance: 'waCRM',
+      data: {
+        key: { remoteJid: '15551234567@s.whatsapp.net', id: 'REACTION-2' },
+        message: {
+          reactionMessage: {
+            key: { remoteJid: '15551234567@s.whatsapp.net', id: 'TARGET-1' },
+            text: '',
+          },
+        },
+        messageTimestamp: 1700000000,
+      },
+    });
+
+    expect(event).toMatchObject({
+      targetProviderMessageId: 'TARGET-1',
+      emoji: '',
+    });
+  });
+
+  it('ignores malformed reactions without a target id or chat JID', () => {
+    const adapter = new EvolutionAdapter();
+    expect(
+      adapter.normalizeInbound({
+        event: 'messages.upsert',
+        instance: 'waCRM',
+        data: {
+          key: { id: 'REACTION-3' },
+          message: { reactionMessage: { text: '👍', key: {} } },
+        },
+      })
+    ).toEqual([]);
+  });
+
   it('normalizes a text message upsert', () => {
     const adapter = new EvolutionAdapter();
     const events = adapter.normalizeInbound({
@@ -500,7 +574,7 @@ describe('EvolutionAdapter normalizeInbound', () => {
 
     expect(events).toHaveLength(1);
     expect((events[0] as { providerMessageId: string }).providerMessageId).toBe(
-      'MSG-NESTED-1',
+      'MSG-NESTED-1'
     );
     expect((events[0] as { status: string }).status).toBe('read');
   });

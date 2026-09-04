@@ -34,6 +34,7 @@ import { dispatchWebhookEvent } from '@/lib/webhooks/deliver';
 import { shouldApplyMessageStatus } from '@/lib/whatsapp/providers/status';
 import type {
   NormalizedInboundEvent,
+  NormalizedReactionEvent,
   NormalizedStatusEvent,
 } from '@/lib/whatsapp/providers/types';
 import type { WhatsAppConfig } from '@/types';
@@ -239,6 +240,14 @@ async function processEvolutionWebhook(
 
   for (const event of events) {
     try {
+      if ('targetProviderMessageId' in event) {
+        await handleInboundReaction(
+          event as NormalizedReactionEvent,
+          accountId,
+          configOwnerUserId
+        );
+        continue;
+      }
       if ('recipientPhone' in event) {
         await handleStatusUpdate(event as NormalizedStatusEvent);
         continue;
@@ -259,11 +268,97 @@ async function processEvolutionWebhook(
         continue;
       }
 
-      await handleInboundMessage(messageEvent, accountId, configOwnerUserId, config);
+      await handleInboundMessage(
+        messageEvent,
+        accountId,
+        configOwnerUserId,
+        config
+      );
     } catch (err) {
       console.error('[evolution webhook] event processing error:', err);
     }
   }
+}
+
+async function handleInboundReaction(
+  event: NormalizedReactionEvent,
+  accountId: string,
+  configOwnerUserId: string
+) {
+  const actorPhone = normalizeInboundPhone(event.actorJid);
+  if (!actorPhone || !isValidE164(actorPhone)) return;
+
+  const db = supabaseAdmin();
+  const { data: target } = await db
+    .from('messages')
+    .select('id, conversation_id, conversations(contact_id)')
+    .eq('message_id', event.targetProviderMessageId)
+    .limit(1)
+    .maybeSingle();
+
+  if (target) {
+    const conversation = target.conversations as { contact_id?: string } | null;
+    const actorId = conversation?.contact_id;
+    if (!actorId) return;
+
+    const reactionQuery = db
+      .from('message_reactions')
+      .delete()
+      .eq('message_id', target.id)
+      .eq('actor_type', 'customer')
+      .eq('actor_id', actorId);
+    if (!event.emoji) {
+      await reactionQuery;
+      return;
+    }
+
+    await db.from('message_reactions').upsert(
+      {
+        message_id: target.id,
+        conversation_id: target.conversation_id,
+        actor_type: 'customer',
+        actor_id: actorId,
+        emoji: event.emoji,
+        created_at: event.timestamp,
+      },
+      { onConflict: 'message_id,actor_type,actor_id' }
+    );
+    return;
+  }
+
+  // The target may arrive later. Keep a visible, non-empty, idempotent row
+  // without entering the inbound-message fan-out.
+  if (!event.emoji) return;
+  const contactOutcome = await findOrCreateContact(
+    accountId,
+    configOwnerUserId,
+    actorPhone
+  );
+  if (!contactOutcome) return;
+  const convOutcome = await findOrCreateConversation(
+    accountId,
+    configOwnerUserId,
+    contactOutcome.contact.id
+  );
+  if (!convOutcome) return;
+
+  const existing = await db
+    .from('messages')
+    .select('id')
+    .eq('conversation_id', convOutcome.conversation.id)
+    .eq('message_id', event.providerMessageId)
+    .maybeSingle();
+  if (existing.data) return;
+
+  await db.from('messages').insert({
+    conversation_id: convOutcome.conversation.id,
+    sender_type: 'customer',
+    content_type: 'text',
+    content_text: event.emoji,
+    message_id: event.providerMessageId,
+    status: 'delivered',
+    created_at: event.timestamp,
+  });
 }
 
 // ============================================================
@@ -509,7 +604,10 @@ async function handleFromMeEcho(
   // do NOT count it as unread or fire inbound automations/flows/AI.
   const recipientPhone = normalizeInboundPhone(event.senderPhone);
   if (!recipientPhone || !isValidE164(recipientPhone)) {
-    console.warn('[evolution webhook] fromMe echo: unresolvable recipient', event.senderPhone);
+    console.warn(
+      '[evolution webhook] fromMe echo: unresolvable recipient',
+      event.senderPhone
+    );
     return;
   }
 

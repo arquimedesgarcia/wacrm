@@ -84,6 +84,23 @@ export interface NormalizedInboundEvent {
  * Not every inbound webhook carries a message; status events are
  * delivered separately and must not be treated as conversations.
  */
+export interface NormalizedReactionEvent {
+  provider: WhatsAppProviderKind
+  providerInstanceId: string
+  /** Provider id of the reaction event itself, for fallback idempotency. */
+  providerMessageId: string
+  /** JID of the chat containing the reaction. */
+  remoteJid: string
+  /** JID of the customer who reacted. */
+  actorJid: string
+  /** Provider id of the target message. */
+  targetProviderMessageId: string
+  /** Empty string means remove the reaction. */
+  emoji: string
+  timestamp: string
+  rawPayload?: unknown
+}
+
 export interface NormalizedStatusEvent {
   provider: WhatsAppProviderKind
   providerInstanceId: string
@@ -101,6 +118,7 @@ export interface NormalizedStatusEvent {
  */
 export type NormalizedWebhookEvent =
   | NormalizedInboundEvent
+  | NormalizedReactionEvent
   | NormalizedStatusEvent
 
 /**
