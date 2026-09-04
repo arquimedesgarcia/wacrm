@@ -564,6 +564,12 @@ async function handleFromMeEcho(
 }
 
 async function handleStatusUpdate(event: NormalizedStatusEvent) {
+  console.info('[evolution webhook] status event received:', {
+    instance: event.providerInstanceId,
+    messageId: event.providerMessageId,
+    status: event.status,
+  });
+
   // Apply only forward lifecycle transitions. Evolution can deliver stale
   // updates after a message is already read.
   const { data: message } = await supabaseAdmin()
@@ -579,6 +585,12 @@ async function handleStatusUpdate(event: NormalizedStatusEvent) {
       .update({ status: event.status })
       .eq('id', message.id)
       .eq('status', message.status);
+  } else if (!message) {
+    console.warn('[evolution webhook] status message not found:', {
+      instance: event.providerInstanceId,
+      messageId: event.providerMessageId,
+      status: event.status,
+    });
   }
 
   // Update broadcast_recipients if applicable.
