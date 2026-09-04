@@ -23,13 +23,22 @@ interface OpenAiResponse {
  * Call OpenAI's Chat Completions endpoint with the caller's own key.
  * Returns the raw assistant text + token usage (handoff parsing happens
  * in `generateReply`).
+ *
+ * When `args.baseUrl` is provided, calls `${baseUrl}/chat/completions`
+ * instead of api.openai.com — enabling OpenAI-compatible providers
+ * (OpenRouter, Ollama local, etc.). The OpenAI Chat Completions schema
+ * is 100% compatible, so no other changes are needed.
  */
 export async function generateOpenAi(args: ProviderArgs): Promise<ProviderResult> {
-  const { apiKey, model, systemPrompt, messages, timeoutMs } = args
+  const { apiKey, model, systemPrompt, messages, timeoutMs, baseUrl } = args
+
+  const endpoint = baseUrl
+    ? `${baseUrl.replace(/\/$/, '')}/chat/completions`
+    : OPENAI_URL
 
   let res: Response
   try {
-    res = await fetch(OPENAI_URL, {
+    res = await fetch(endpoint, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

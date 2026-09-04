@@ -7,6 +7,7 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
     provider: 'openai',
     model: 'gpt-test',
     apiKey: 'sk-test',
+    baseUrl: null,
     systemPrompt: null,
     isActive: true,
     autoReplyEnabled: false,
@@ -190,5 +191,52 @@ describe('generateReply — Anthropic', () => {
     const body = JSON.parse(fetchMock.mock.calls[0][1].body)
     expect(body.messages[0].role).toBe('user')
     expect(body.messages).toHaveLength(1)
+  })
+})
+
+describe('generateReply — OpenAI-compatible', () => {
+  it('uses the baseUrl endpoint when provider is openai_compatible', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'Hello from OpenRouter!' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({
+        provider: 'openai_compatible',
+        baseUrl: 'https://openrouter.ai/api/v1',
+      }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    expect(res).toEqual({
+      text: 'Hello from OpenRouter!',
+      handoff: false,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+    })
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('openrouter.ai/api/v1/chat/completions')
+  })
+
+  it('falls back to api.openai.com when no baseUrl is set for openai provider', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        choices: [{ message: { content: 'ok' } }],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await generateReply({
+      config: config({ provider: 'openai', baseUrl: null }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toContain('api.openai.com')
   })
 })

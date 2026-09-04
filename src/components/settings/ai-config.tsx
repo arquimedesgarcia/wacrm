@@ -42,11 +42,13 @@ const HANDOFF_QUEUE = '__queue__';
 const PROVIDER_LABEL: Record<AiProvider, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
+  openai_compatible: 'OpenAI-compatible (OpenRouter, Ollama, …)',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
+  openai_compatible: 'Bearer token or any string (not validated by most providers)',
 };
 
 export function AiConfig() {
@@ -85,6 +87,7 @@ export function AiConfig() {
   const [embeddingsKey, setEmbeddingsKey] = useState('');
   const [embeddingsKeyEdited, setEmbeddingsKeyEdited] = useState(false);
   const [hasStoredEmbeddingsKey, setHasStoredEmbeddingsKey] = useState(false);
+  const [baseUrl, setBaseUrl] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
@@ -123,6 +126,7 @@ export function AiConfig() {
         setHasStoredEmbeddingsKey(Boolean(data.has_embeddings_key));
         setEmbeddingsKey(data.has_embeddings_key ? MASKED_KEY : '');
         setEmbeddingsKeyEdited(false);
+        setBaseUrl(data.base_url ?? '');
       }
     } catch {
       toast.error(t('loadFailed'));
@@ -148,8 +152,12 @@ export function AiConfig() {
     const isDefaultModel =
       model === AI_PROVIDER_DEFAULT_MODEL.openai ||
       model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
+      model === AI_PROVIDER_DEFAULT_MODEL.openai_compatible ||
       model.trim() === '';
     if (isDefaultModel) setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
+    if (next !== 'openai_compatible') {
+      setBaseUrl('');
+    }
   };
 
   const keyPayload = () => (keyEdited ? apiKey.trim() : undefined);
@@ -162,6 +170,8 @@ export function AiConfig() {
     provider,
     model: model.trim(),
     api_key: keyPayload(),
+    base_url:
+      provider === 'openai_compatible' ? (baseUrl.trim() || null) : undefined,
     embeddings_api_key: embeddingsKeyPayload(),
     system_prompt: systemPrompt.trim() || null,
     is_active: isActive,
@@ -180,6 +190,10 @@ export function AiConfig() {
           provider,
           model: model.trim(),
           api_key: keyPayload(),
+          base_url:
+            provider === 'openai_compatible'
+              ? baseUrl.trim() || null
+              : undefined,
         }),
       });
       const data = await res.json();
@@ -195,6 +209,10 @@ export function AiConfig() {
   const handleSave = async () => {
     if (!model.trim()) {
       toast.error(t('missingModel'));
+      return;
+    }
+    if (provider === 'openai_compatible' && !baseUrl.trim()) {
+      toast.error(t('missingBaseUrl'));
       return;
     }
     if (!configured && !keyEdited) {
@@ -232,6 +250,7 @@ export function AiConfig() {
         setHasStoredKey(false);
         setApiKey('');
         setKeyEdited(false);
+        setBaseUrl('');
         setIsActive(false);
         setAutoReplyEnabled(false);
         setSystemPrompt('');
@@ -298,6 +317,9 @@ export function AiConfig() {
                     <SelectItem value="anthropic">
                       {PROVIDER_LABEL.anthropic}
                     </SelectItem>
+                    <SelectItem value="openai_compatible">
+                      {PROVIDER_LABEL.openai_compatible}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -313,6 +335,25 @@ export function AiConfig() {
                 />
               </div>
             </div>
+
+            {provider === 'openai_compatible' && (
+              <div className="space-y-2">
+                <Label htmlFor="ai-base-url">{t('baseURL')}</Label>
+                <Input
+                  id="ai-base-url"
+                  value={baseUrl}
+                  onChange={(e) => {
+                    setBaseUrl(e.target.value);
+                  }}
+                  placeholder="https://openrouter.ai/api/v1"
+                  disabled={disabled}
+                  autoComplete="off"
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t('baseURLDesc')}
+                </p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="ai-key">{t('apiKey')}</Label>

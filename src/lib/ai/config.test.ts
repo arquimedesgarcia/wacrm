@@ -22,11 +22,17 @@ const ROW = {
   provider: 'openai',
   model: 'gpt-x',
   api_key: 'enc-key',
+  base_url: null,
   system_prompt: null,
   is_active: false,
   auto_reply_enabled: false,
   auto_reply_max_per_conversation: 3,
   embeddings_api_key: null,
+}
+const ROW_COMPATIBLE = {
+  ...ROW,
+  provider: 'openai_compatible' as const,
+  base_url: 'https://openrouter.ai/api/v1',
 }
 
 describe('loadAiConfig requireActive', () => {
@@ -47,5 +53,22 @@ describe('loadAiConfig requireActive', () => {
     expect(
       await loadAiConfig(dbReturning(null), 'acct', { requireActive: false }),
     ).toBeNull()
+  })
+
+  it('maps base_url from the DB row to baseUrl', async () => {
+    const config = await loadAiConfig(dbReturning(ROW_COMPATIBLE), 'acct', {
+      requireActive: false,
+    })
+    expect(config).not.toBeNull()
+    expect(config!.provider).toBe('openai_compatible')
+    expect(config!.baseUrl).toBe('https://openrouter.ai/api/v1')
+  })
+
+  it('returns null for baseUrl on native openai', async () => {
+    const config = await loadAiConfig(dbReturning(ROW), 'acct', {
+      requireActive: false,
+    })
+    expect(config).not.toBeNull()
+    expect(config!.baseUrl).toBeNull()
   })
 })

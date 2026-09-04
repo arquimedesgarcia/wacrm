@@ -30,14 +30,33 @@ export async function POST(request: Request) {
     }
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'openai_compatible') {
       return errorCode('ai_provider_invalid', 400, {
-        message: 'provider must be "openai" or "anthropic"',
+        message: 'provider must be "openai", "anthropic", or "openai_compatible"',
       })
     }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) {
       return errorCode('model_required', 400, { message: 'model is required' })
+    }
+
+    // base_url for openai_compatible provider (needed for validateAiCredentials).
+    let baseUrl: string | null = null
+    if (provider === 'openai_compatible') {
+      const rawUrl = typeof body.base_url === 'string' ? body.base_url.trim() : ''
+      if (!rawUrl) {
+        return errorCode('base_url_required', 400, {
+          message: 'base_url is required for openai_compatible providers',
+        })
+      }
+      try {
+        new URL(rawUrl)
+      } catch {
+        return errorCode('base_url_invalid', 400, {
+          message: 'base_url must be a valid URL',
+        })
+      }
+      baseUrl = rawUrl
     }
 
     const rawKey = typeof body.api_key === 'string' ? body.api_key.trim() : ''
@@ -68,6 +87,7 @@ export async function POST(request: Request) {
         provider,
         model,
         apiKey: apiKeyPlain,
+        baseUrl,
         systemPrompt: null,
         isActive: true,
         autoReplyEnabled: false,

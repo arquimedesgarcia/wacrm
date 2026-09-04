@@ -27,7 +27,7 @@ export async function GET() {
       // `api_key` is selected only to derive `has_key` — it is stripped
       // out below and never returned to the client.
       .select(
-        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key',
+        'provider, model, system_prompt, is_active, auto_reply_enabled, auto_reply_max_per_conversation, handoff_agent_id, api_key, embeddings_api_key, base_url',
       )
       .eq('account_id', accountId)
       .maybeSingle()
@@ -78,14 +78,37 @@ export async function POST(request: Request) {
     }
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'openai_compatible') {
       return errorCode('ai_provider_invalid', 400, {
-        message: 'provider must be "openai" or "anthropic"',
+        message: 'provider must be "openai", "anthropic", or "openai_compatible"',
       })
     }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) {
       return errorCode('model_required', 400, { message: 'model is required' })
+    }
+
+    // base_url is required for openai_compatible providers (OpenRouter,
+    // Ollama local) and must be a valid URL. NULL for native providers.
+    let baseUrl: string | null = null
+    if (provider === 'openai_compatible') {
+      const rawUrl = typeof body.base_url === 'string' ? body.base_url.trim() : ''
+      if (!rawUrl) {
+        return errorCode('base_url_required', 400, {
+          message: 'base_url is required for openai_compatible providers',
+        })
+      }
+      try {
+        const parsed = new URL(rawUrl)
+        if (!/^https?:$/i.test(parsed.protocol)) {
+          throw new Error('not http/https')
+        }
+      } catch {
+        return errorCode('base_url_invalid', 400, {
+          message: 'base_url must be a valid http(s) URL',
+        })
+      }
+      baseUrl = rawUrl
     }
 
     const systemPrompt =
@@ -136,7 +159,7 @@ export async function POST(request: Request) {
     // Reuse the stored key when the form didn't send a fresh one.
     const { data: existing } = await supabase
       .from('ai_configs')
-      .select('id, provider, model, api_key')
+      .select('id, provider, model, api_key, base_url, embeddings_api_key')
       .eq('account_id', accountId)
       .maybeSingle()
 
@@ -166,7 +189,8 @@ export async function POST(request: Request) {
       !existing ||
       rawKey !== '' ||
       provider !== existing.provider ||
-      model !== existing.model
+      model !== existing.model ||
+      (provider === 'openai_compatible' && baseUrl !== existing.base_url)
 
     if (credentialsChanged) {
       try {
@@ -174,12 +198,14 @@ export async function POST(request: Request) {
           provider,
           model,
           apiKey: apiKeyPlain,
+          baseUrl,
           systemPrompt,
           isActive,
           autoReplyEnabled,
           autoReplyMaxPerConversation: maxPer,
           handoffAgentId: null,
-          embeddingsApiKey: null,
+          embeddingsApiKey:
+            rawEmbeddingsKey || (clearEmbeddingsKey ? null : existing?.embeddings_api_key) || null,
         })
       } catch (err) {
         if (err instanceof AiError) {
@@ -214,6 +240,7 @@ export async function POST(request: Request) {
     const shared: Record<string, unknown> = {
       provider,
       model,
+      base_url: baseUrl,
       system_prompt: systemPrompt,
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,

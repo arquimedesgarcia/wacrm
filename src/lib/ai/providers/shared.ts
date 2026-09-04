@@ -10,6 +10,10 @@ export interface ProviderArgs {
   systemPrompt: string
   messages: ChatMessage[]
   timeoutMs: number
+  /** Base URL for OpenAI-compatible providers (OpenRouter, Ollama).
+   *  When set, the adapter calls `${baseUrl}/chat/completions` instead
+   *  of the hardcoded OpenAI endpoint. Ignored for Anthropic. */
+  baseUrl?: string
 }
 
 /**

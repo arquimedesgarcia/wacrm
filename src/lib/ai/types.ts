@@ -6,7 +6,7 @@
 // whether the account is on OpenAI or Anthropic.
 // ============================================================
 
-export type AiProvider = 'openai' | 'anthropic'
+export type AiProvider = 'openai' | 'anthropic' | 'openai_compatible'
 
 /**
  * Account AI setup, decrypted and ready to use. Produced by
@@ -25,6 +25,9 @@ export interface AiConfig {
    *  agent's `auth.users.id`, or null to leave it unassigned (drop into
    *  the shared queue). */
   handoffAgentId: string | null
+  /** Base URL for OpenAI-compatible providers (OpenRouter, Ollama local).
+   *  NULL for native openai/anthropic. */
+  baseUrl: string | null
   /** Optional OpenAI-compatible key for embeddings. When set, the
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
