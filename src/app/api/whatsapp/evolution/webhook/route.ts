@@ -425,7 +425,11 @@ async function handleInboundMessage(
   //    leaves mediaUrl null but we still persist the text/caption row.
   let mediaUrl: string | null = event.mediaUrl;
   let mediaType: string | null = event.mediaType;
-  if (event.contentType === 'image' || event.contentType === 'video') {
+  if (
+    event.contentType === 'image' ||
+    event.contentType === 'video' ||
+    event.contentType === 'audio'
+  ) {
     try {
       const resolved = await resolveEvolutionMessageMedia({
         config: config as unknown as WhatsAppConfig,
@@ -435,6 +439,10 @@ async function handleInboundMessage(
       });
       if (resolved.mediaUrl) {
         mediaUrl = resolved.mediaUrl;
+      }
+      // Always preserve the resolved/preserved MIME even when the bytes
+      // could not be mirrored — the UI needs it to pick an audio icon.
+      if (resolved.mediaType) {
         mediaType = resolved.mediaType;
       }
     } catch (err) {
@@ -625,10 +633,14 @@ async function handleFromMeEcho(
   );
   if (!convOutcome) return;
 
-  // Resolve durable media (images/video sent from the phone).
+  // Resolve durable media (images/video/audio sent from the phone).
   let phoneMediaUrl: string | null = event.mediaUrl;
   let phoneMediaType: string | null = event.mediaType;
-  if (event.contentType === 'image' || event.contentType === 'video') {
+  if (
+    event.contentType === 'image' ||
+    event.contentType === 'video' ||
+    event.contentType === 'audio'
+  ) {
     try {
       const resolved = await resolveEvolutionMessageMedia({
         config: config as unknown as WhatsAppConfig,
@@ -638,6 +650,9 @@ async function handleFromMeEcho(
       });
       if (resolved.mediaUrl) {
         phoneMediaUrl = resolved.mediaUrl;
+      }
+      // Preserve MIME even when bytes could not be mirrored.
+      if (resolved.mediaType) {
         phoneMediaType = resolved.mediaType;
       }
     } catch (err) {

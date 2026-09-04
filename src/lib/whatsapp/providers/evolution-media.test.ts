@@ -16,7 +16,9 @@ function makeStorage(): MirrorStorage {
     from: () => ({
       upload: vi.fn(async () => ({ error: null })),
       getPublicUrl: () => ({
-        data: { publicUrl: `https://cdn.test/chat-media/${ACCOUNT}/inbound/file.jpg` },
+        data: {
+          publicUrl: `https://cdn.test/chat-media/${ACCOUNT}/inbound/file.jpg`,
+        },
       }),
     }),
   };
@@ -31,7 +33,11 @@ function makeConfig(): Record<string, unknown> {
 }
 
 const RAW_IMAGE = {
-  key: { id: 'MSG-IMG-1', remoteJid: '15551234567@s.whatsapp.net', fromMe: false },
+  key: {
+    id: 'MSG-IMG-1',
+    remoteJid: '15551234567@s.whatsapp.net',
+    fromMe: false,
+  },
   message: {
     imageMessage: { mimetype: 'image/jpeg', caption: 'hi', url: undefined },
   },
@@ -40,19 +46,17 @@ const RAW_IMAGE = {
 
 describe('fetchEvolutionMediaBase64', () => {
   it('posts the message key and returns base64 + mime', async () => {
-    const fetchMock = vi
-      .fn()
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            base64: 'aGVsbG8=', // "hello"
-            mimetype: 'image/jpeg',
-            fileName: 'pic.jpg',
-            size: { fileLength: '1048576' },
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } }
-        )
-      );
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          base64: 'aGVsbG8=', // "hello"
+          mimetype: 'image/jpeg',
+          fileName: 'pic.jpg',
+          size: { fileLength: '1048576' },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
 
     const res = await fetchEvolutionMediaBase64({
       baseUrl: 'https://evolution.example.com',
@@ -69,7 +73,9 @@ describe('fetchEvolutionMediaBase64', () => {
     expect(res?.base64).toBe('aGVsbG8=');
 
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://evolution.example.com/chat/getBase64FromMediaMessage/waCRM');
+    expect(url).toBe(
+      'https://evolution.example.com/chat/getBase64FromMediaMessage/waCRM'
+    );
     expect(init.method).toBe('POST');
     const body = JSON.parse(init.body as string);
     expect(body.message.key.id).toBe('MSG-IMG-1');
@@ -94,7 +100,10 @@ describe('fetchEvolutionMediaBase64', () => {
       .fn()
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ base64: 'data:image/png;base64,aGVsbG8=', mimetype: 'image/png' }),
+          JSON.stringify({
+            base64: 'data:image/png;base64,aGVsbG8=',
+            mimetype: 'image/png',
+          }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         )
       );
@@ -109,13 +118,88 @@ describe('fetchEvolutionMediaBase64', () => {
   });
 });
 
+describe('resolveEvolutionMessageMedia audio', () => {
+  const RAW_AUDIO = {
+    key: {
+      id: 'MSG-AUD-1',
+      remoteJid: '15551234567@s.whatsapp.net',
+      fromMe: false,
+    },
+    message: {
+      audioMessage: { mimetype: 'audio/ogg; codecs=opus' },
+    },
+    messageTimestamp: 1700000000,
+  };
+
+  it('mirrors audio bytes and preserves the audio MIME', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          base64: Buffer.from('hello').toString('base64'),
+          mimetype: 'audio/ogg; codecs=opus',
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    const storage = makeStorage();
+    const url = await resolveEvolutionMessageMedia({
+      config: makeConfig() as never,
+      rawPayload: RAW_AUDIO as never,
+      accountId: ACCOUNT,
+      storage,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(url.mediaUrl).toContain('chat-media');
+    expect(url.mediaType).toBe('audio/ogg; codecs=opus');
+  });
+
+  it('keeps mediaType from the message when fetch omits mimetype', async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          base64: Buffer.from('hello').toString('base64'),
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    const storage = makeStorage();
+    const url = await resolveEvolutionMessageMedia({
+      config: makeConfig() as never,
+      rawPayload: RAW_AUDIO as never,
+      accountId: ACCOUNT,
+      storage,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(url.mediaType).toBe('audio/ogg; codecs=opus');
+  });
+
+  it('returns null mediaUrl on failure but still reports the known MIME', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('', { status: 500 }));
+    const storage = makeStorage();
+    const url = await resolveEvolutionMessageMedia({
+      config: makeConfig() as never,
+      rawPayload: RAW_AUDIO as never,
+      accountId: ACCOUNT,
+      storage,
+      fetchImpl: fetchMock as unknown as typeof fetch,
+    });
+    expect(url.mediaUrl).toBeNull();
+    expect(url.mediaType).toBe('audio/ogg; codecs=opus');
+  });
+});
+
 describe('resolveEvolutionMessageMedia', () => {
   it('mirrors the downloaded bytes into chat-media and returns the URL', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(
         new Response(
-          JSON.stringify({ base64: Buffer.from('hello').toString('base64'), mimetype: 'image/jpeg' }),
+          JSON.stringify({
+            base64: Buffer.from('hello').toString('base64'),
+            mimetype: 'image/jpeg',
+          }),
           { status: 200, headers: { 'Content-Type': 'application/json' } }
         )
       );
@@ -135,7 +219,9 @@ describe('resolveEvolutionMessageMedia', () => {
   });
 
   it('falls back to null mediaUrl when the instance returns nothing', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce(new Response('', { status: 404 }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('', { status: 404 }));
     const storage = makeStorage();
     const url = await resolveEvolutionMessageMedia({
       config: makeConfig() as never,

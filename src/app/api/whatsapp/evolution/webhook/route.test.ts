@@ -17,6 +17,7 @@ const h = {
     conversationsFindOrCreate: 0,
     mediaBase64: null as string | null,
     existingMessage: null as Record<string, unknown> | null,
+    mediaMimeType: 'image/jpeg' as string | null,
     messageUpdates: [] as Record<string, unknown>[],
     reactionUpserts: [] as Record<string, unknown>[],
     reactionDeletes: [] as Record<string, unknown>[],
@@ -244,6 +245,7 @@ beforeEach(() => {
   h.state.messageUpdates = [];
   h.state.reactionUpserts = [];
   h.state.reactionDeletes = [];
+  h.state.mediaMimeType = 'image/jpeg';
 });
 
 afterEach(() => {
@@ -286,7 +288,7 @@ function stubEvolutionFetch() {
         return new Response(
           JSON.stringify({
             base64: h.state.mediaBase64,
-            mimetype: 'image/jpeg',
+            mimetype: h.state.mediaMimeType ?? 'image/jpeg',
             fileName: null,
             size: { fileLength: String(Buffer.from('hello-bytes').byteLength) },
           }),
@@ -388,6 +390,75 @@ describe('Evolution webhook: customer reactions', () => {
 
     expect(h.state.reactionDeletes).toHaveLength(1);
     expect(h.state.messagesInserts).toEqual([]);
+  });
+});
+
+describe('Evolution webhook: inbound audio media', () => {
+  it('persists a durable chat-media URL for an inbound audio with MIME preserved', async () => {
+    h.state.mediaBase64 = Buffer.from('hello').toString('base64');
+    h.state.mediaMimeType = 'audio/ogg; codecs=opus';
+    stubEvolutionFetch();
+
+    await makePostRequest({
+      event: 'MESSAGES_UPSERT',
+      instance: 'waCRM',
+      data: {
+        messages: [
+          {
+            key: {
+              remoteJid: '15551234567@s.whatsapp.net',
+              fromMe: false,
+              id: 'AUDIO-IN-1',
+            },
+            message: {
+              audioMessage: { mimetype: 'audio/ogg; codecs=opus' },
+            },
+            messageTimestamp: 1700000000,
+          },
+        ],
+      },
+    });
+
+    const inserted = h.state.messagesInserts.find(
+      (m) => m.message_id === 'AUDIO-IN-1'
+    );
+    expect(inserted).toBeDefined();
+    expect(inserted?.sender_type).toBe('customer');
+    expect(inserted?.content_type).toBe('audio');
+    expect(inserted?.media_type).toBe('audio/ogg; codecs=opus');
+    expect(String(inserted?.media_url)).toContain('chat-media');
+  });
+
+  it('persists audio even when the media fetch fails (best-effort)', async () => {
+    h.state.mediaBase64 = null;
+    h.state.mediaMimeType = 'audio/ogg';
+    stubEvolutionFetch();
+
+    await makePostRequest({
+      event: 'MESSAGES_UPSERT',
+      instance: 'waCRM',
+      data: {
+        messages: [
+          {
+            key: {
+              remoteJid: '15551234567@s.whatsapp.net',
+              fromMe: false,
+              id: 'AUDIO-IN-FAIL-1',
+            },
+            message: { audioMessage: { mimetype: 'audio/ogg' } },
+            messageTimestamp: 1700000000,
+          },
+        ],
+      },
+    });
+
+    const inserted = h.state.messagesInserts.find(
+      (m) => m.message_id === 'AUDIO-IN-FAIL-1'
+    );
+    expect(inserted).toBeDefined();
+    expect(inserted?.content_type).toBe('audio');
+    expect(inserted?.media_url).toBeNull();
+    expect(inserted?.media_type).toBe('audio/ogg');
   });
 });
 

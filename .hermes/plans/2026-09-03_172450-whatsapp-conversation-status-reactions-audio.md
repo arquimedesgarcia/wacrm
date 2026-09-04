@@ -117,7 +117,38 @@
 
 ---
 
-# Spec 5 — Reproducción de mensajes de audio en la bandeja
+## Spec 3 — reproducción de audios en la bandeja
+
+**Objetivo:** Que los audios y mensajes de voz recibidos desde Evolution se resuelvan como `audio`/`ptt`, persistan con `media_url`/`media_type` con el MIME real, y reproduzcan con `<audio controls>` + descarga manual.
+
+### Hechos confirmados
+
+- `src/lib/whatsapp/providers/evolution-media.ts` YA extrae `audioMessage` (mimetype/caption/filename) en `extractEvolutionMediaMeta`, YA incluye `audioMessage` en `extractInlineBase64`, y `fetchEvolutionMediaBase64` es genérico por contenido.
+- El webhook (`route.ts`) solo llama a `resolveEvolutionMessageMedia` para `image`/`video`. El mismo `if` aparece en ambos caminos: `handleInboundMessage` y `handleFromMeEcho`. Es el único hueco.
+- El adaptador (`evolution-adapter.ts`) normaliza `audioMessage` → contentType `audio` en `normalizeHistoricalMessage`.
+- `src/components/inbox/message-bubble.tsx` ya renderiza `audio` con `MediaAudioBubble` (`<audio controls>` + descarga) o `MediaUnavailable`.
+- `src/lib/media/gallery.ts` YA excluye audio del lightbox (solo `image`/`video`), verificado por `gallery.test.ts`.
+- `src/lib/media/filename.ts` ya mapea `audio/ogg`, `audio/mpeg`, `audio/opus`, `audio/mp4` (m4a), `audio/aac`, `audio/amr`.
+
+### Hipótesis sin payload real
+
+- El `mimetype` de Evolution para mensajes de voz suele ser `audio/ogg; codecs=opus` (Baileys) o `audio/mp4`. `extractEvolutionMediaMeta` ya conserva el valor tal cual llega.
+- `getBase64FromMediaMessage` acepta el mismo `message.key.id` para audio. No se valida sin payload real, pero el endpoint no discrimina por tipo.
+
+### Implementación
+
+- Extender la condición de resolución de media en `route.ts` para incluir `audio` en `handleInboundMessage` y `handleFromMeEcho`.
+- Nada más en la UI: `<audio controls>` y descarga ya existen; no autoplay.
+- No se agrega migración. No se cambia el contrato de tipos.
+
+### Tests
+
+- Audio válido persistido con `media_url`/`media_type` (MIME preservado) en inbound y fromMe.
+- Falla de resolución persiste el mensaje con `media_url=null`, sin ocultar la conversación.
+- `extractEvolutionMediaMeta` preserva `audio/ogg`, `audio/mpeg`, `audio/mp4`.
+- `collectMediaGallery` excluye audio.
+
+**Commit esperado:** `feat: play evolution audio in inbox`
 
 **Objetivo:** Persistir el audio recibido desde Evolution y permitir reproducirlo directamente en la bandeja, con descarga y estado de error claro.
 
@@ -192,7 +223,43 @@
 
 ---
 
-## Riesgos y preguntas abiertas
+## Spec 3 — reproducción de audios en la bandeja
+
+**Objetivo:** Que los audios y mensajes de voz recibidos desde Evolution se resuelvan como `audio`, persistan con `media_url`/`media_type` con el MIME real, y reproduzcan con `<audio controls>` + descarga manual.
+
+### Hechos confirmados
+
+- `src/lib/whatsapp/providers/evolution-media.ts` YA extrae `audioMessage` (mimetype) en `extractEvolutionMediaMeta`, YA incluye `audioMessage` en `extractInlineBase64`, y `fetchEvolutionMediaBase64` es genérico (funciona por `message.key.id`).
+- El webhook (`route.ts`) solo llama a `resolveEvolutionMedia` para `image`/`video` en `handleInboundMessage` y `handleFromMeEcho`. Ese `if` es el único hueco.
+- El adaptador normaliza `audioMessage` → contentType `audio` en `normalizeHistoricalMessage`.
+- `message-bubble.tsx` ya renderiza `audio` con `MediaAudioBubble` (`<audio controls>` + descarga) o `MediaUnavailable`.
+- `gallery.ts` YA excluye audio del lightbox (solo `image`/`video`).
+
+### Implementación
+
+- Ampliar la condición `media` en `route.ts` a `['image','video','audio']` en ambos caminos.
+- Nada más en UI: `<audio controls>` + descarga ya existen; no autoplay.
+- No migración, no cambio de tipos.
+
+### Tests
+
+- Audio válido resuelto y persistido con MIME (`audio/ogg; codecs=opus`) en inbound y fromMe.
+- Fallo de resolución persiste el mensaje con `media_url=null`, sin ocultar conversación.
+- `extractEvolutionMediaMeta` preserva `audio/ogg`, `audio/mpeg`, `audio/mp4`.
+- `collectMediaGallery` excluye audio.
+
+**Commit esperado:** `feat: play evolution audio in inbox`
+
+---
+
+## Riesgos y límites
+
+- El `mimetype` exacto de Evolution para ptt suele ser `audio/ogg; codecs=opus` (Baileys), no se valida sin payload real.
+- `getBase64FromMediaMessage` no discrimina por tipo; se confía en el mismo contrato que image/video.
+
+---
+
+## Orden de ejecución y dependencias
 
 - Evolution/Baileys puede emitir estados numéricos o nombres distintos según el endpoint; no se debe fijar el mapeo final sin payload real.
 - Una reacción puede referenciar un mensaje que aún no llegó a la base local; se necesita una estrategia de reintento o fallback determinista.
