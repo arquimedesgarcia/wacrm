@@ -395,6 +395,12 @@ function InboxPageInner() {
    * Tracked via a `was-connected` ref rather than a count so that React
    * strict-mode's dev-only effect double-fire doesn't read as a
    * reconnect.
+   *
+   * `useRealtime` now reflects every channel status (`SUBSCRIBED`,
+   * `CHANNEL_ERROR`, `TIMED_OUT`, `CLOSED`) in `isConnected`, so this
+   * fires both for clean reconnects and for cases where the WS died
+   * silently and came back via Supabase's internal re-handshake
+   * (.hermes/plans/2026-09-04_1100-inbox-realtime-resilience.md).
    */
   const wasConnectedRef = useRef(false);
   const initialConnectDoneRef = useRef(false);
@@ -408,6 +414,26 @@ function InboxPageInner() {
       }
     }
     wasConnectedRef.current = isConnected;
+  }, [isConnected]);
+
+  /**
+   * Heartbeat resync when the realtime channel is down. Realtime is
+   * best-effort and a silently dead WebSocket won't be reported as
+   * disconnected if Supabase never fires its CHANNEL_ERROR callback —
+   * typical when the user keeps the tab open and the auth token
+   * silently refreshes, or when the WS drops behind a flaky network
+   * and the reconnect handshake never lands. As a last line of defense
+   * we bump resyncToken every 30s while disconnected so the children
+   * (ConversationList, MessageThread) refetch the DB and the UI catches
+   * up. The interval is torn down as soon as the channel reports back
+   * to SUBSCRIBED.
+   */
+  useEffect(() => {
+    if (isConnected) return;
+    const id = window.setInterval(() => {
+      setResyncToken((n) => n + 1);
+    }, 30_000);
+    return () => window.clearInterval(id);
   }, [isConnected]);
 
   /**

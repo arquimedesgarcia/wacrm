@@ -18,6 +18,18 @@ interface UseRealtimeOptions {
   enabled?: boolean;
 }
 
+/**
+ * Whether the realtime channel is currently delivering events. Only
+ * `SUBSCRIBED` counts as connected — every other status reported by
+ * Supabase (`CHANNEL_ERROR`, `TIMED_OUT`, `CLOSED`, or anything else)
+ * means the WebSocket is no longer a reliable event source, so we
+ * surface it to the consumer and let the consumer trigger a resync
+ * (.hermes/plans/2026-09-04_1100-inbox-realtime-resilience.md).
+ */
+export function isRealtimeConnected(status: string): boolean {
+  return status === "SUBSCRIBED";
+}
+
 export function useRealtime({
   channelName,
   onMessageEvent,
@@ -69,14 +81,27 @@ export function useRealtime({
         }
       )
       .subscribe((status) => {
-        setIsConnected(status === "SUBSCRIBED");
+        // Map every status Supabase delivers — not just SUBSCRIBED — to
+        // the connected flag. Previously we only set true on SUBSCRIBED
+        // and never reset to false on error, which left callers believing
+        // they were receiving events while the channel was silently dead
+        // (.hermes/plans/2026-09-04_1100-inbox-realtime-resilience.md).
+        setIsConnected(isRealtimeConnected(status));
+        if (!isRealtimeConnected(status)) {
+          // Detach so a later reconnect resubscribes cleanly instead of
+          // relying on Supabase to transparently re-handshake a half-broken
+          // channel. The next render of the effect recreates the channel.
+          channelRef.current = null;
+        }
       });
 
     channelRef.current = channel;
 
     return () => {
-      supabase.removeChannel(channel);
-      channelRef.current = null;
+      if (channelRef.current === channel) {
+        supabase.removeChannel(channel);
+        channelRef.current = null;
+      }
       setIsConnected(false);
     };
   }, [channelName, enabled]);
@@ -84,8 +109,9 @@ export function useRealtime({
   const unsubscribe = useCallback(() => {
     if (channelRef.current) {
       const supabase = createClient();
-      supabase.removeChannel(channelRef.current);
+      const ch = channelRef.current;
       channelRef.current = null;
+      supabase.removeChannel(ch);
       setIsConnected(false);
     }
   }, []);
