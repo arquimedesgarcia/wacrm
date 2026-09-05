@@ -28,6 +28,19 @@ export interface AiConfig {
   /** Base URL for OpenAI-compatible providers (OpenRouter, Ollama local).
    *  NULL for native openai/anthropic. */
   baseUrl: string | null
+  /** Override for the models-catalog endpoint. NULL = derive
+   *  `${baseUrl}/models` (the OpenAI-compatible convention). */
+  modelsUrl: string | null
+  /** Whitelist of fallback models tried when the configured one fails.
+   *  Empty array = discover dynamically (when autoRefreshModels) or
+   *  surface the upstream error. */
+  fallbackModels: string[]
+  /** When true and fallbackModels is empty, the runtime fetches the
+   *  provider's `/models` catalog and filters for free entries before
+   *  giving up. */
+  autoRefreshModels: boolean
+  /** Retries per model before jumping to the next fallback. 0..10. */
+  maxRetries: number
   /** Optional OpenAI-compatible key for embeddings. When set, the
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
@@ -70,15 +83,27 @@ export interface GenerateResult {
 /**
  * Typed error for every AI failure mode. `status` maps cleanly to an
  * HTTP response in the draft route; `code` lets the UI/tests branch
- * (invalid_key vs rate_limited vs timeout, etc.).
+ * (invalid_key vs rate_limited vs timeout, etc.). `providerStatus`
+ * is the raw HTTP status returned by the upstream provider (when
+ * applicable) so retry/fallback wrappers can branch on 404/5xx/429
+ * without parsing the human-readable message.
  */
 export class AiError extends Error {
   readonly code: string
   readonly status: number
-  constructor(message: string, opts: { code?: string; status?: number } = {}) {
+  readonly providerStatus: number | null
+  constructor(
+    message: string,
+    opts: {
+      code?: string
+      status?: number
+      providerStatus?: number | null
+    } = {},
+  ) {
     super(message)
     this.name = 'AiError'
     this.code = opts.code ?? 'ai_error'
     this.status = opts.status ?? 502
+    this.providerStatus = opts.providerStatus ?? null
   }
 }

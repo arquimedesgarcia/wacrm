@@ -71,4 +71,32 @@ describe('loadAiConfig requireActive', () => {
     expect(config).not.toBeNull()
     expect(config!.baseUrl).toBeNull()
   })
+
+  it('defaults modelsUrl, fallbackModels, autoRefreshModels and maxRetries when DB columns are null', async () => {
+    const config = await loadAiConfig(dbReturning(ROW), 'acct', {
+      requireActive: false,
+    })
+    expect(config!.modelsUrl).toBeNull()
+    expect(config!.fallbackModels).toEqual([])
+    expect(config!.autoRefreshModels).toBe(true)
+    expect(config!.maxRetries).toBe(3)
+  })
+
+  it('maps the new columns from the DB row', async () => {
+    const config = await loadAiConfig(
+      dbReturning({
+        ...ROW_COMPATIBLE,
+        models_url: 'https://example.com/catalog',
+        fallback_models: ['m-a', 'm-b'],
+        auto_refresh_models: false,
+        max_retries: 5,
+      }),
+      'acct',
+      { requireActive: false },
+    )
+    expect(config!.modelsUrl).toBe('https://example.com/catalog')
+    expect(config!.fallbackModels).toEqual(['m-a', 'm-b'])
+    expect(config!.autoRefreshModels).toBe(false)
+    expect(config!.maxRetries).toBe(5)
+  })
 })

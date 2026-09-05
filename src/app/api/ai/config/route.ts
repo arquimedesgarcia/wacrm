@@ -111,6 +111,39 @@ export async function POST(request: Request) {
       baseUrl = rawUrl
     }
 
+    // models_url is optional. When empty, the runtime falls back to
+    // `${baseUrl}/models` (the OpenAI-compatible convention). Same
+    // http(s) validation as base_url when supplied.
+    let modelsUrl: string | null = null
+    if (typeof body.models_url === 'string' && body.models_url.trim()) {
+      const rawModels = body.models_url.trim()
+      try {
+        const parsed = new URL(rawModels)
+        if (!/^https?:$/i.test(parsed.protocol)) throw new Error('not http/https')
+        modelsUrl = rawModels
+      } catch {
+        return errorCode('models_url_invalid', 400, {
+          message: 'models_url must be a valid http(s) URL',
+        })
+      }
+    }
+
+    // fallback_models is an array of provider model IDs. Empty array =
+    // "no whitelist, rely on dynamic discovery or surface upstream
+    // errors". We don't validate each entry — the provider will reject
+    // bogus slugs with 404 at request time.
+    const fallbackModels: string[] = Array.isArray(body.fallback_models)
+      ? (body.fallback_models as unknown[]).filter(
+          (m): m is string => typeof m === 'string' && m.length > 0,
+        )
+      : []
+
+    const autoRefreshModels = body.auto_refresh_models !== false
+
+    let maxRetries = Number(body.max_retries)
+    if (!Number.isFinite(maxRetries)) maxRetries = 3
+    maxRetries = Math.min(10, Math.max(0, Math.floor(maxRetries)))
+
     const systemPrompt =
       typeof body.system_prompt === 'string' && body.system_prompt.trim()
         ? body.system_prompt.trim()
@@ -206,6 +239,10 @@ export async function POST(request: Request) {
           handoffAgentId: null,
           embeddingsApiKey:
             rawEmbeddingsKey || (clearEmbeddingsKey ? null : existing?.embeddings_api_key) || null,
+          modelsUrl: modelsUrl ?? null,
+          fallbackModels: fallbackModels ?? [],
+          autoRefreshModels: autoRefreshModels ?? true,
+          maxRetries: maxRetries ?? 3,
         })
       } catch (err) {
         if (err instanceof AiError) {
@@ -241,6 +278,10 @@ export async function POST(request: Request) {
       provider,
       model,
       base_url: baseUrl,
+      models_url: modelsUrl,
+      fallback_models: fallbackModels,
+      auto_refresh_models: autoRefreshModels,
+      max_retries: maxRetries,
       system_prompt: systemPrompt,
       is_active: isActive,
       auto_reply_enabled: autoReplyEnabled,

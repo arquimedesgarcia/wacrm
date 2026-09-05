@@ -173,6 +173,13 @@ export const RATE_LIMITS = {
    *  capping a stampede; excess inbounds simply don't get an auto-reply
    *  (they still land in the inbox for a human). */
   aiAutoReplyAccount: { limit: 30, windowMs: 60_000 },
+  /** Refresh of the AI model-catalog cache (the OpenAI-compatible
+   *  adapter's `/models` endpoint used as the last-resort fallback
+   *  discovery). Per account, 5/min — operators hit this from the AI
+   *  settings "Update models" button, and the runtime only consults
+   *  the cache (60 min TTL) on the failure path, so the live hit rate
+   *  is tiny. */
+  aiModelsDiscovery: { limit: 5, windowMs: 60_000 },
 } as const;
 
 /** Test-only helper. Clears the in-memory state so unit tests don't

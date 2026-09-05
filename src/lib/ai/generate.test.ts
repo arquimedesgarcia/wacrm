@@ -8,6 +8,10 @@ function config(overrides: Partial<AiConfig> = {}): AiConfig {
     model: 'gpt-test',
     apiKey: 'sk-test',
     baseUrl: null,
+    modelsUrl: null,
+    fallbackModels: [],
+    autoRefreshModels: true,
+    maxRetries: 3,
     systemPrompt: null,
     isActive: true,
     autoReplyEnabled: false,
@@ -238,5 +242,125 @@ describe('generateReply — OpenAI-compatible', () => {
 
     const [url] = fetchMock.mock.calls[0]
     expect(url).toContain('api.openai.com')
+  })
+})
+
+describe('generateReply — OpenAI fallback chain', () => {
+  it('skips 404 (model not found) and tries the next whitelist model', async () => {
+    const fetchMock = vi
+      .fn()
+      // Primary model: 404
+      .mockResolvedValueOnce(errResponse(404, { error: { message: 'not found' } }))
+      // Fallback model 1: 404
+      .mockResolvedValueOnce(errResponse(404, { error: { message: 'not found' } }))
+      // Fallback model 2: success
+      .mockResolvedValueOnce(
+        okResponse({
+          choices: [{ message: { content: 'all good' } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({
+        provider: 'openai_compatible',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'primary/missing',
+        fallbackModels: ['backup/missing', 'backup/found'],
+        autoRefreshModels: false,
+      }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    })
+
+    expect(res.text).toBe('all good')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    const bodies = fetchMock.mock.calls.map((c) => JSON.parse(c[1].body))
+    expect(bodies[0].model).toBe('primary/missing')
+    expect(bodies[1].model).toBe('backup/missing')
+    expect(bodies[2].model).toBe('backup/found')
+  })
+
+  it('retries a 429 up to maxRetries before moving on', { timeout: 15000 }, async () => {
+    // `shouldAdvanceTime: true` makes any in-flight `setTimeout` resolve
+    // when the awaited microtask queue runs, so we don't need to
+    // manually drain timers while still being deterministic.
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const fetchMock = vi
+      .fn()
+      // 2 x 429 (maxRetries: 2)
+      .mockResolvedValueOnce(errResponse(429, { error: { message: 'rate' } }))
+      .mockResolvedValueOnce(errResponse(429, { error: { message: 'rate' } }))
+      // Whitelist model: 404 so we don't have to wait again
+      .mockResolvedValueOnce(errResponse(404, { error: { message: 'gone' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const err = await generateReply({
+      config: config({
+        provider: 'openai_compatible',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'primary/x',
+        fallbackModels: ['backup/y'],
+        autoRefreshModels: false,
+        maxRetries: 2,
+      }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    }).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(AiError)
+    expect(fetchMock).toHaveBeenCalledTimes(3)
+    vi.useRealTimers()
+  })
+
+  it('does not retry on 401 — invalid key aborts the chain', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(errResponse(401, { error: { message: 'bad key' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(
+      generateReply({
+        config: config({
+          provider: 'openai_compatible',
+          baseUrl: 'https://openrouter.ai/api/v1',
+          model: 'x',
+          fallbackModels: ['y', 'z'],
+          autoRefreshModels: false,
+        }),
+        systemPrompt: 'sys',
+        messages: [{ role: 'user', content: 'Hi' }],
+      }),
+    ).rejects.toMatchObject({ code: 'invalid_key' })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('re-throws the last error when every model in the chain fails', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    // maxRetries=1 keeps the per-model backoff to a single 1-second
+    // sleep (plus jitter), so the whole chain finishes in ~4s.
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(errResponse(500, { error: { message: 'boom' } }))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const err = await generateReply({
+      config: config({
+        provider: 'openai_compatible',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        model: 'a',
+        fallbackModels: ['b'],
+        autoRefreshModels: false,
+        maxRetries: 1,
+      }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Hi' }],
+    }).catch((e: unknown) => e)
+
+    expect(err).toBeInstanceOf(AiError)
+    // 1 primary retry + 1 fallback retry = 2.
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    vi.useRealTimers()
   })
 })

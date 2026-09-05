@@ -14,6 +14,22 @@ export interface ProviderArgs {
    *  When set, the adapter calls `${baseUrl}/chat/completions` instead
    *  of the hardcoded OpenAI endpoint. Ignored for Anthropic. */
   baseUrl?: string
+  /** Override for the model catalog endpoint (defaults to
+   *  `${baseUrl}/models`). Only used by the OpenAI-compatible adapter
+   *  for fallback-model discovery. */
+  modelsUrl?: string
+  /** Provider-side allowed model whitelist, tried after the primary
+   *  exhausts its retry budget. Only used by the OpenAI-compatible
+   *  adapter. */
+  fallbackModels?: string[]
+  /** When true (default), the OpenAI-compatible adapter will discover
+   *  free-tier models from the provider's catalog as a last-resort
+   *  fallback. Disable for locked-down or air-gapped deployments. */
+  autoRefreshModels?: boolean
+  /** Maximum retry attempts per model for transient errors (429, 5xx,
+   *  network, timeout). Defaults to 3. Only used by the OpenAI-compatible
+   *  adapter. */
+  maxRetries?: number
 }
 
 /**
@@ -91,6 +107,9 @@ export async function providerHttpError(
     // Surface an auth failure as 401 so the settings "Test key" button
     // can show "invalid key"; everything else is an upstream 502.
     status: code === 'invalid_key' ? 401 : 502,
+    // Carry the raw provider HTTP status so retry/fallback wrappers
+    // can branch on 404/5xx/429 without parsing the message.
+    providerStatus: status,
   })
 }
 
