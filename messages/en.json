@@ -2014,7 +2014,18 @@
       "saveSuccess": "AI assistant saved.",
       "saveFailed": "Failed to save.",
       "removeSuccess": "AI configuration removed.",
-      "removeFailed": "Failed to remove."
+      "removeFailed": "Failed to remove.",
+      "modelsUrl": "Models URL",
+      "modelsUrlDesc": "Endpoint used to list available models. Defaults to {baseUrl}/models. Override only if your provider exposes the catalog at a different path.",
+      "updateModels": "Update models",
+      "availableModels": "Available models",
+      "noModelsYet": "Click \"Update models\" to fetch the list.",
+      "modelsFetchError": "Failed to fetch the model list. Check the Models URL and your API key.",
+      "showingFreeModels": "Showing {total, number} models, {free, number} free",
+      "badgeFree": "free",
+      "badgeRouter": "router",
+      "copyModelId": "Copy model id",
+      "copiedToModel": "Copied \"{id}\" to the model field."
     },
     "aiKnowledge": {
       "loadFailed": "Failed to load knowledge base",

@@ -1934,7 +1934,18 @@
       "saveSuccess": "Asistente de IA guardado.",
       "saveFailed": "Error al guardar.",
       "removeSuccess": "Configuración de IA eliminada.",
-      "removeFailed": "Error al eliminar."
+      "removeFailed": "Error al eliminar.",
+      "modelsUrl": "URL de modelos",
+      "modelsUrlDesc": "Endpoint used to list available models. Defaults to {baseUrl}/models. Override only if your provider exposes the catalog at a different path.",
+      "updateModels": "Actualizar modelos",
+      "availableModels": "Modelos disponibles",
+      "noModelsYet": "Pulsa \"Actualizar modelos\" para obtener la lista.",
+      "modelsFetchError": "No se pudo obtener la lista de modelos. Revisa la URL de modelos y tu API key.",
+      "showingFreeModels": "Mostrando {total, number} modelos, {free, number} gratis",
+      "badgeFree": "gratis",
+      "badgeRouter": "router",
+      "copyModelId": "Copiar id del modelo",
+      "copiedToModel": "Se copió \"{id}\" al campo de modelo."
     },
     "aiKnowledge": {
       "loadFailed": "Error al cargar la base de conocimiento",
