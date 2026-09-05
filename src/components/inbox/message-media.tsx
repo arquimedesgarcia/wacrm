@@ -231,10 +231,22 @@ export function MediaAudioBubble({
   t: Translator;
 }) {
   const { downloading, download } = useMediaDownload(message, t);
+  const [broken, setBroken] = useState(false);
+
+  if (broken) {
+    return <MediaUnavailable label={t("voiceMessage")} t={t} />;
+  }
 
   return (
     <div className="flex items-center gap-2">
-      <audio src={message.media_url} controls className="max-w-60" />
+      <audio
+        src={message.media_url}
+        controls
+        preload="none"
+        aria-label={t("voiceMessage")}
+        onError={() => setBroken(true)}
+        className="w-64"
+      />
       <MediaActionButton
         icon={Download}
         label={t("download")}

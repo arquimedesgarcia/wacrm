@@ -121,6 +121,16 @@ function MessageContent({
           ) : (
             <MediaUnavailable label={t("audio")} t={t} />
           )}
+          {message.content_text && (
+            <div className="mt-1.5">
+              <span className="text-[10px] font-medium uppercase tracking-wide opacity-60">
+                {t("transcription")}
+              </span>
+              <p className="whitespace-pre-wrap break-words text-sm">
+                {message.content_text}
+              </p>
+            </div>
+          )}
         </div>
       );
 

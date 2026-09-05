@@ -233,7 +233,9 @@
       "downloadFailed": "Couldn't download the attachment",
       "viewImage": "View image",
       "expandVideo": "Expand video",
-      "imageAlt": "Shared image"
+      "imageAlt": "Shared image",
+      "voiceMessage": "Voice message",
+      "transcription": "Transcription"
     },
     "mediaViewer": {
       "counter": "{index} of {total}",
