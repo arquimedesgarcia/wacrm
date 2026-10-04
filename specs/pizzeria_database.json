@@ -1,0 +1,98 @@
+{
+  "restaurant": {
+    "name": "Pizzería La Vecchia",
+    "description": "Pizzas artesanales desde 2010. Delivery y recogida.",
+    "phone": "+58116789",
+    "address": "Av. 10, Casa 123",
+    "delivery_fee": { "small": 2, "medium": 2, "large": 3 }
+  },
+  "pizzas": [
+    {
+      "id": "marg",
+      "key": "margarita",
+      "name": "Margarita",
+      "price_small": 12,
+      "price_medium": 15,
+      "price_large": 18,
+      "ingredients": ["mozzarella", "tomate", "albahaca"],
+      "description": "Verdura: mozzarella, tomate, albahaca fresca. Clásica y equilibrada.",
+      "is_vegetarian": true,
+      "is_gluten_free": false,
+      "image_file": "margarita.jpg",
+      "preparation_minutes": 12
+    },
+    {
+      "id": "napo",
+      "key": "napolitana",
+      "name": "Napolitana",
+      "price_small": 15,
+      "price_medium": 18,
+      "price_large": 21,
+      "ingredients": ["mozzarella", "tomate", "jamón", "rúcula", "aceitunas"],
+      "description": "Tomate, mozzarella, jamón, rúcula fresca y aceitunas negras.",
+      "is_vegetarian": false,
+      "is_gluten_free": false,
+      "image_file": "napolitana.jpg",
+      "preparation_minutes": 14
+    },
+    {
+      "id": "pesc",
+      "key": "pescadora",
+      "name": "Pescadora",
+      "price_small": 18,
+      "price_medium": 21,
+      "price_large": 24,
+      "ingredients": ["salsa de ajo", "queso", "atún", "aceitunas", "pimientos"],
+      "description": "Salsa de ajo, queso, atún, aceitunas y pimientos rojos. Para los amantes del mar.",
+      "is_vegetarian": false,
+      "is_gluten_free": false,
+      "image_file": "pescadora.jpg",
+      "preparation_minutes": 15
+    },
+    {
+      "id": "espec",
+      "key": "la_vecchia",
+      "name": "La Vecchia Especial",
+      "price_small": 20,
+      "price_medium": 23,
+      "price_large": 26,
+      "ingredients": ["mozzarella", "tomate", "chorizo", "pimiento rojo", "cebolla caramelizada", "orégano"],
+      "description": "Nuestra pizza estrella: chorizo, pimiento, cebolla caramelizada y orégano sobre base de tomate y mozzarella.",
+      "is_vegetarian": false,
+      "is_gluten_free": false,
+      "image_file": "la_vecchia.jpg",
+      "preparation_minutes": 16
+    },
+    {
+      "id": "vege",
+      "key": "vegetariana",
+      "name": "Vegetariana",
+      "price_small": 14,
+      "price_medium": 17,
+      "price_large": 20,
+      "ingredients": ["mozzarella", "tomate", "pimiento verde", "pimiento rojo", "cebolla", "champiñones", "aceitunas"],
+      "description": "Para todos los públicos. Mozzarella, verduras frescas y aceitunas negras.",
+      "is_vegetarian": true,
+      "is_gluten_free": false,
+      "image_file": "vegetariana.jpg",
+      "preparation_minutes": 13
+    }
+  ],
+  "sizes": [
+    {"key": "pequena", "label": "Pequeña", "price_modifier": 0, "diameter_cm": 25},
+    {"key": "mediana", "label": "Mediana", "price_modifier": 3, "diameter_cm": 30},
+    {"key": "grande", "label": "Grande", "price_modifier": 5, "diameter_cm": 35}
+  ],
+  "sample_clients": [
+    {"phone": "+58116701", "name": "María González", "preference": "sin gluten ocasional", "orders_total": 7, "premium": true},
+    {"phone": "+58116702", "name": "Carlos Pérez", "preference": "extra orégano", "orders_total": 3, "premium": false},
+    {"phone": "+58116703", "name": "Ana Ríos", "preference": "sin queso", "orders_total": 1, "premium": false},
+    {"phone": "+58116704", "name": "Luis Fernández", "preference": "", "orders_total": 5, "premium": false},
+    {"phone": "+58116705", "name": "Patricia Díaz", "preference": "borde extra crujiente", "orders_total": 2, "premium": false}
+  ],
+  "meseros": [
+    {"id": "mesero_1", "name": "Juan", "phone": "+58118777"},
+    {"id": "mesero_2", "name": "María", "phone": "+58118778"},
+    {"id": "mesero_3", "name": "Carlos", "phone": "+58118779"}
+  ]
+}

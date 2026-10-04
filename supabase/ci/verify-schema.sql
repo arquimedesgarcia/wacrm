@@ -42,6 +42,18 @@ BEGIN
     RAISE EXCEPTION 'public.accounts is missing — migration 017 did not apply';
   END IF;
 
+  -- Independent pizzeria simulation schema (050). IF NOT EXISTS guards
+  -- make a typo'd table name a silent no-op; assert the tables exist.
+  IF to_regclass('public.pizzeria_pizzas') IS NULL THEN
+    RAISE EXCEPTION 'public.pizzeria_pizzas is missing — migration 050 did not apply';
+  END IF;
+  IF to_regclass('public.pizzeria_orders') IS NULL THEN
+    RAISE EXCEPTION 'public.pizzeria_orders is missing — migration 050 did not apply';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'pizzeria-media') THEN
+    RAISE EXCEPTION 'the pizzeria-media bucket row was not created (migration 050)';
+  END IF;
+
   RAISE NOTICE 'schema verification passed';
 END
 $$;
